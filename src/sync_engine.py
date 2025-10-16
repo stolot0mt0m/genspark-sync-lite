@@ -18,10 +18,10 @@ from genspark_api import GenSparkAPIClient
 class SyncEngine:
     """Manages bi-directional synchronization between local and AI Drive"""
     
-    def __init__(self, local_root: Path, api_client: GenSparkAPIClient, sync_strategy: str = 'ask'):
+    def __init__(self, local_root: Path, api_client: GenSparkAPIClient, sync_strategy: str = 'remote'):
         self.local_root = Path(local_root)
         self.api_client = api_client
-        self.sync_strategy = sync_strategy  # 'local', 'remote', or 'ask'
+        self.sync_strategy = sync_strategy  # 'local', 'remote' (default), or 'ask'
         self.logger = logging.getLogger('SyncEngine')
         
         # State file tracking

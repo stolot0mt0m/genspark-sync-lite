@@ -20,10 +20,10 @@ from sync_engine import SyncEngine
 class GenSparkSyncApp:
     """Main sync application"""
     
-    def __init__(self, sync_folder: Path, poll_interval: int = 30, sync_strategy: str = 'ask'):
+    def __init__(self, sync_folder: Path, poll_interval: int = 30, sync_strategy: str = 'remote'):
         self.sync_folder = Path(sync_folder)
         self.poll_interval = poll_interval
-        self.sync_strategy = sync_strategy  # 'local', 'remote', or 'ask'
+        self.sync_strategy = sync_strategy  # 'local', 'remote' (default), or 'ask'
         
         # Components
         self.api_client: Optional[GenSparkAPIClient] = None
@@ -264,21 +264,26 @@ def main():
         poll_interval = 30
     
     # Get initial sync strategy
-    print(f"\n⚠️  Initial Sync Strategy (for remote-only folders/files):")
-    print("  [L] Local priority - Delete remote files that don't exist locally")
-    print("  [R] Remote priority - Download remote files that don't exist locally")
-    print("  [A] Ask - Prompt for each conflict (default)")
+    print(f"\n⚠️  Initial Sync Strategy:")
+    print("  [L] Local priority - Local version is leading")
+    print("  [R] Remote priority - Remote version is leading (default)")
+    print("  [A] Ask - Prompt for each conflict")
     response = input("Choose strategy [L/R/A]: ").strip().upper()
     
     if response == 'L':
         sync_strategy = 'local'
-        print("✅ Using LOCAL priority - Remote-only items will be deleted")
-    elif response == 'R':
-        sync_strategy = 'remote'
-        print("✅ Using REMOTE priority - Remote-only items will be downloaded")
-    else:
+        print("✅ Using LOCAL priority")
+        print("   - Remote-only files will be deleted from AI Drive")
+        print("   - Local-only files will be uploaded to AI Drive")
+    elif response == 'A':
         sync_strategy = 'ask'
         print("✅ Using ASK mode - Will prompt for conflicts")
+    else:
+        # Default to 'remote' if empty or 'R'
+        sync_strategy = 'remote'
+        print("✅ Using REMOTE priority (default)")
+        print("   - Remote-only files will be downloaded to local")
+        print("   - Local-only files will be deleted from local")
     
     print()
     

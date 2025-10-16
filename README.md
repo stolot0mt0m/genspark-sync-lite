@@ -153,8 +153,8 @@ Falls du den Fehler `403 Client Error: Forbidden` bekommst:
 5. **Initial Sync Strategy wählen:**
    ```
    [L] Local priority - Lokale Version ist führend
-   [R] Remote priority - Remote Version ist führend
-   [A] Ask - Für jede Differenz wird gefragt (default)
+   [R] Remote priority - Remote Version ist führend (default)
+   [A] Ask - Für jede Differenz wird gefragt
    ```
    
    **Beispiele:**
