@@ -16,7 +16,7 @@ class GenSparkAPIClient:
     
     BASE_URL = "https://www.genspark.ai"
     AI_DRIVE_URL = f"{BASE_URL}/aidrive/files/"  # Web UI for AI Drive
-    API_BASE = f"{BASE_URL}/aidrive/files/api"  # Discovered via endpoint discovery tool
+    API_BASE = f"{BASE_URL}/api/aidrive/recent"  # Discovered via Chrome DevTools Network tab
     
     def __init__(self):
         self.session = requests.Session()
@@ -55,41 +55,31 @@ class GenSparkAPIClient:
             self.logger.error(f"Failed to load cookies: {e}")
             return False
     
-    def list_files(self, filter_type: str = "all", sort_by: str = "modified_desc") -> Optional[List[Dict[str, Any]]]:
+    def list_files(self, limit: int = 100) -> Optional[List[Dict[str, Any]]]:
         """
         List all files in AI Drive
         
         Args:
-            filter_type: File type filter (default: "all")
-            sort_by: Sort order (default: "modified_desc")
+            limit: Maximum number of files to retrieve (default: 100)
             
         Returns:
             List of file dictionaries or None on error
         """
         try:
-            url = f"{self.API_BASE}/list"
+            url = f"{self.API_BASE}/files"
             params = {
-                "filter_type": filter_type,
-                "sort_by": sort_by,
-                "file_type": "all"
+                "limit": limit
             }
             
             self.logger.debug(f"Listing files: {url}")
             response = self.session.get(url, params=params, timeout=10)
             response.raise_for_status()
             
-            # The response might be HTML or JSON, handle both
-            content_type = response.headers.get('content-type', '')
-            if 'json' in content_type.lower():
-                data = response.json()
-                items = data.get("items", [])
-                self.logger.info(f"Retrieved {len(items)} items from AI Drive")
-                return items
-            else:
-                # Response is HTML, need to parse it
-                self.logger.warning("API returned HTML instead of JSON, may need to parse HTML")
-                # For now, return empty list
-                return []
+            data = response.json()
+            items = data.get("items", [])
+            
+            self.logger.info(f"Retrieved {len(items)} items from AI Drive")
+            return items
             
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Failed to list files: {e}")
