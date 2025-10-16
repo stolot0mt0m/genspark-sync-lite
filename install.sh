@@ -466,7 +466,7 @@ main() {
     fi
     
     # Check Python FIRST (before pip)
-    python_cmd="$(check_python || true)"
+    python_cmd="$(check_python 2>/dev/null || echo '')"
     if [[ -z "${python_cmd}" ]]; then
         needs_python=true
     else
@@ -490,7 +490,13 @@ main() {
             exit 1
         fi
         install_python
-        python_cmd="$(check_python)"
+        # Re-check Python after installation
+        python_cmd="$(check_python 2>/dev/null || echo '')"
+        if [[ -z "${python_cmd}" ]]; then
+            print_error "Python installation succeeded but python3 not found in PATH"
+            print_info "Try closing and reopening Terminal, then run ./install.sh again"
+            exit 1
+        fi
     fi
     
     if [[ "${needs_pip}" == true ]]; then
