@@ -92,9 +92,9 @@ class GenSparkSyncApp:
         # Initialize file watcher
         self.file_watcher = LocalFileWatcher(
             watch_path=self.sync_folder,
-            on_created=lambda path: self.sync_engine.handle_local_change(path, 'created'),
-            on_modified=lambda path: self.sync_engine.handle_local_change(path, 'modified'),
-            on_deleted=lambda path: self.sync_engine.handle_local_change(path, 'deleted'),
+            on_created=lambda event: self.sync_engine.handle_local_change(Path(event.src_path), 'created'),
+            on_modified=lambda event: self.sync_engine.handle_local_change(Path(event.src_path), 'modified'),
+            on_deleted=lambda event: self.sync_engine.handle_local_change(Path(event.src_path), 'deleted'),
             debounce_seconds=2.0
         )
         

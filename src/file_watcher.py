@@ -24,9 +24,9 @@ class LocalFileWatcher(FileSystemEventHandler):
         debounce_seconds: float = 2.0
     ):
         self.watch_path = Path(watch_path)
-        self.on_created = on_created
-        self.on_modified = on_modified
-        self.on_deleted = on_deleted
+        self.on_file_created = on_created
+        self.on_file_modified = on_modified
+        self.on_file_deleted = on_deleted
         self.debounce_seconds = debounce_seconds
         
         # Debouncing: Track recently processed files
@@ -109,7 +109,7 @@ class LocalFileWatcher(FileSystemEventHandler):
         
         self.logger.info(f"File created: {path.name}")
         try:
-            self.on_created(path)
+            self.on_file_created(event)
         except Exception as e:
             self.logger.error(f"Error handling created event: {e}")
     
@@ -128,7 +128,7 @@ class LocalFileWatcher(FileSystemEventHandler):
         
         self.logger.info(f"File modified: {path.name}")
         try:
-            self.on_modified(path)
+            self.on_file_modified(event)
         except Exception as e:
             self.logger.error(f"Error handling modified event: {e}")
     
@@ -147,7 +147,7 @@ class LocalFileWatcher(FileSystemEventHandler):
         
         self.logger.info(f"File deleted: {path.name}")
         try:
-            self.on_deleted(path)
+            self.on_file_deleted(event)
         except Exception as e:
             self.logger.error(f"Error handling deleted event: {e}")
     
