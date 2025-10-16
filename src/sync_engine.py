@@ -230,13 +230,13 @@ class SyncEngine:
                 path = conflict['path']
                 local = conflict['local']
                 remote = conflict['remote']
-                self.logger.warning(f"CONFLICT: {path}")
-                self.logger.warning(f"  Local:  size={local['size']}, mtime={local['modified_time']}")
-                self.logger.warning(f"  Remote: size={remote['size']}, mtime={remote['modified_time']}")
-                self.logger.warning(f"  → Both files changed since last sync")
+                self.logger.warning(f"⚠️  CONFLICT: {path}")
+                self.logger.warning(f"    Local:  size={local['size']} bytes, mtime={local['modified_time']}")
+                self.logger.warning(f"    Remote: size={remote['size']} bytes, mtime={remote['modified_time']}")
+                self.logger.warning(f"    → Both files changed since last sync - keeping both versions")
             self.stats['conflicts'] += len(conflicts)
-            # In a real app, this would trigger UI notification
-            return self.stats
+            # Don't return early - continue with non-conflicting files
+            # return self.stats
         
         # Download new remote files
         remote_only = set(remote_files.keys()) - set(local_files.keys())
