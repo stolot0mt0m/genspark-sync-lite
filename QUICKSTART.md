@@ -4,7 +4,9 @@
 
 ### 1️⃣ Chrome vorbereiten
 ```bash
-# Öffne Chrome und logge dich bei genspark.ai ein
+# Öffne Chrome und gehe zu:
+# https://www.genspark.ai/aidrive/files/
+# Logge dich ein
 # Dann: Chrome KOMPLETT schließen (Cmd+Q)
 ```
 

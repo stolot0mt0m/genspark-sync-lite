@@ -15,6 +15,7 @@ class GenSparkAPIClient:
     """HTTP client for GenSpark AI Drive API"""
     
     BASE_URL = "https://www.genspark.ai"
+    AI_DRIVE_URL = f"{BASE_URL}/aidrive/files/"  # Web UI for AI Drive
     API_BASE = f"{BASE_URL}/api/side/wget_upload_url"
     
     def __init__(self):

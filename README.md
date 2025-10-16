@@ -20,6 +20,14 @@
 
 ---
 
+## 🌐 GenSpark AI Drive
+
+**Web Interface:** https://www.genspark.ai/aidrive/files/
+
+**API Endpoints:** https://www.genspark.ai/api/side/wget_upload_url/
+
+---
+
 ## 🚀 Features
 
 ### ✅ Bi-direktionale Synchronisation

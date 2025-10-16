@@ -111,6 +111,20 @@ genspark-sync-lite/
 
 ---
 
+## 🌐 GenSpark AI Drive URLs
+
+**Web Interface:**
+```
+https://www.genspark.ai/aidrive/files/
+```
+
+**API Base:**
+```
+https://www.genspark.ai/api/side/wget_upload_url/
+```
+
+---
+
 ## 🔧 API Endpoints (Reverse Engineered)
 
 ### 1. List Files
