@@ -53,34 +53,62 @@ if '{' in response.text or '[' in response.text:
                 print(f"\nJSON #{i+1} (first 200 chars):")
                 print(match[:200])
 
-# Check if it's a Next.js page
-if '__NEXT_DATA__' in response.text:
-    print("\n✅ This is a Next.js page!")
-    print("Looking for __NEXT_DATA__...")
+# Check if it's a Nuxt.js page
+if 'nuxt' in response.text.lower() or '_nuxt' in response.text.lower():
+    print("\n✅ This is a Nuxt.js page!")
     
-    # Extract __NEXT_DATA__
+    # Nuxt uses different patterns - look for window.__NUXT__ or embedded data
     import re
-    match = re.search(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', response.text, re.DOTALL)
+    
+    # Pattern 1: window.__NUXT__
+    match = re.search(r'window\.__NUXT__\s*=\s*({.*?});', response.text, re.DOTALL)
     if match:
         try:
-            next_data = json.loads(match.group(1))
-            print("\n✅ Successfully parsed __NEXT_DATA__!")
-            print(f"\nKeys: {list(next_data.keys())}")
+            nuxt_data = json.loads(match.group(1))
+            print("\n✅ Successfully parsed window.__NUXT__!")
+            print(f"\nKeys: {list(nuxt_data.keys())}")
             
-            # Look for file data in props
-            if 'props' in next_data:
-                print(f"\nProps keys: {list(next_data['props'].keys())}")
-                
-                if 'pageProps' in next_data['props']:
-                    page_props = next_data['props']['pageProps']
-                    print(f"\nPageProps keys: {list(page_props.keys())}")
-                    
-                    # Save to file for inspection
-                    with open('next_data.json', 'w') as f:
-                        json.dump(next_data, f, indent=2)
-                    print("\n✅ Saved full data to: next_data.json")
-                    
+            with open('nuxt_data.json', 'w') as f:
+                json.dump(nuxt_data, f, indent=2)
+            print("\n✅ Saved full data to: nuxt_data.json")
+            
         except Exception as e:
-            print(f"\n❌ Failed to parse __NEXT_DATA__: {e}")
+            print(f"\n❌ Failed to parse window.__NUXT__: {e}")
+    
+    # Pattern 2: Look for JSON in script tags
+    script_matches = re.findall(r'<script[^>]*>(.*?)</script>', response.text, re.DOTALL | re.IGNORECASE)
+    print(f"\n🔍 Found {len(script_matches)} script tags")
+    
+    for i, script in enumerate(script_matches):
+        if len(script) > 100 and ('{' in script or '[' in script):
+            print(f"\nScript #{i+1} (first 300 chars):")
+            print(script[:300])
+    
+    # Pattern 3: Look for data-* attributes with JSON
+    data_attrs = re.findall(r'data-[^=]+="({[^"]+}|\[[^\]]+\])"', response.text)
+    if data_attrs:
+        print(f"\n🔍 Found {len(data_attrs)} data attributes with JSON")
+
+# Alternative: Use Playwright to get rendered data
+print("\n" + "=" * 70)
+print("💡 ALTERNATIVE APPROACH:")
+print("=" * 70)
+print("""
+Since the page is client-side rendered (Nuxt.js), the file data 
+is loaded via JavaScript AFTER the page loads.
+
+We need to:
+1. Find the actual API endpoint that JavaScript calls
+2. Or use browser automation to wait for data to load
+
+Next step: Open Chrome DevTools and:
+1. Go to: https://www.genspark.ai/aidrive/files/
+2. Open DevTools (Cmd+Option+I)
+3. Go to Network tab
+4. Filter by 'Fetch/XHR'
+5. Reload the page
+6. Look for API calls that return JSON with file list
+7. Copy the exact URL of that request
+""")
 
 print("\n" + "=" * 70)
