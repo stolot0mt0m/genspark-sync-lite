@@ -358,6 +358,11 @@ class GenSparkAPIClient:
             True if successful, False otherwise
         """
         try:
+            # Check if file exists at start (prevent race conditions with rapid create/delete)
+            if not local_path.exists():
+                self.logger.debug(f"File does not exist, skipping upload: {local_path}")
+                return False
+            
             # Step 0: Create folder if file is in a folder
             if '/' in remote_filename:
                 # Extract folder path (everything before last /)
@@ -387,9 +392,18 @@ class GenSparkAPIClient:
             # Step 2: Upload file directly to Azure Blob Storage
             self.logger.info(f"Uploading to Azure: {local_path.name}")
             
+            # Check if file still exists before reading (race condition prevention)
+            if not local_path.exists():
+                self.logger.warning(f"File no longer exists (deleted during upload): {local_path}")
+                return False
+            
             # Read file content
-            with open(local_path, 'rb') as f:
-                file_content = f.read()
+            try:
+                with open(local_path, 'rb') as f:
+                    file_content = f.read()
+            except FileNotFoundError:
+                self.logger.warning(f"File disappeared while reading (race condition): {local_path}")
+                return False
             
             # PUT to Azure Blob Storage
             # Based on Chrome DevTools, headers needed:

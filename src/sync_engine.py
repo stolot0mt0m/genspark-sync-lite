@@ -543,15 +543,27 @@ class SyncEngine:
                 self.uploading_files.add(relative_path)
             
             try:
+                # Check if file still exists before uploading (race condition check)
+                if not path.exists():
+                    self.logger.debug(f"File no longer exists, skipping upload: {relative_path}")
+                    return
+                
                 # Upload file with full path for folders support
                 self.logger.info(f"Uploading: {relative_path}")
                 if self.api_client.upload_file(path, relative_path):
-                    self.state[relative_path] = {
-                        'modified_time': int(path.stat().st_mtime),
-                        'size': path.stat().st_size
-                    }
-                    self.save_state()
-                    self.stats['uploads'] += 1
+                    # Double-check file exists before getting stats (paranoid check)
+                    if path.exists():
+                        self.state[relative_path] = {
+                            'modified_time': int(path.stat().st_mtime),
+                            'size': path.stat().st_size
+                        }
+                        self.save_state()
+                        self.stats['uploads'] += 1
+                    else:
+                        self.logger.debug(f"File disappeared after upload: {relative_path}")
+            except FileNotFoundError:
+                # File was deleted during upload process (race condition)
+                self.logger.debug(f"File deleted during upload (race condition): {relative_path}")
             finally:
                 # Always remove from uploading set
                 with self.upload_lock:
