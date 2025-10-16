@@ -57,18 +57,21 @@ class GenSparkAPIClient:
     
     def list_files(self, limit: int = 100) -> Optional[List[Dict[str, Any]]]:
         """
-        List all files in AI Drive
+        List all files and folders in AI Drive
         
         Args:
-            limit: Maximum number of files to retrieve (default: 100)
+            limit: Maximum number of items to retrieve (default: 100)
             
         Returns:
-            List of file dictionaries or None on error
+            List of file/folder dictionaries or None on error
         """
         try:
-            url = f"{self.API_BASE}/files"
+            # Use /api/aidrive/files endpoint which returns folders AND files with paths
+            url = f"{self.BASE_URL}/api/aidrive/files"
             params = {
-                "limit": limit
+                "filter_type": "all",
+                "sort_by": "modified_desc",
+                "file_type": "all"
             }
             
             self.logger.debug(f"Listing files: {url}")
@@ -101,22 +104,29 @@ class GenSparkAPIClient:
             self.logger.error(f"Failed to get file metadata: {e}")
             return None
     
-    def download_file(self, file_id: str, file_name: str, destination: Path) -> bool:
+    def download_file(self, file_id: str, file_name: str, file_path: str, destination: Path) -> bool:
         """
         Download a file from AI Drive
         
         Args:
-            file_id: Unique file ID
+            file_id: Unique file ID  
             file_name: Original filename
+            file_path: Full path from API (e.g. "/folder/file.txt" or "/file.txt")
             destination: Local path to save file
             
         Returns:
             True if successful, False otherwise
         """
         try:
-            # GenSpark uses filename-based download endpoint that redirects to Azure Blob
-            # Pattern: /api/aidrive/download/files/{filename}
-            url = f"{self.BASE_URL}/api/aidrive/download/files/{file_name}"
+            # GenSpark uses path-based download endpoint
+            # Pattern: /api/aidrive/download/files{path}
+            # Examples:
+            #   /api/aidrive/download/files/beschreibung.txt (root file)
+            #   /api/aidrive/download/files/GitHub_Deployment/DEPLOYMENT_INSTRUCTIONS.md (in folder)
+            
+            # Remove leading slash from path for URL construction
+            clean_path = file_path.lstrip('/')
+            url = f"{self.BASE_URL}/api/aidrive/download/files/{clean_path}"
             
             self.logger.info(f"Downloading: {file_name}")
             

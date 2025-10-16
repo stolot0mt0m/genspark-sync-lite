@@ -97,16 +97,23 @@ class SyncEngine:
             return remote_files
         
         for item in items:
+            # Skip directories - we only sync files
+            if item.get('type') == 'directory':
+                continue
+                
             if item['type'] == 'file':
                 # Skip thumbnail files (they're generated, not real user files)
                 if item['name'].startswith('thumb_') and item['name'].endswith('.jpg'):
                     continue
                 
-                path = item['path'] + '/' + item['name'] if item['path'] else item['name']
-                path = path.lstrip('/')
+                # Use the path from API response directly
+                # Example: "/beschreibung.txt" or "/GitHub_Deployment/DEPLOYMENT_INSTRUCTIONS.md"
+                file_path = item['path']
+                relative_path = file_path.lstrip('/')  # Remove leading slash for local path
                 
-                remote_files[path] = {
-                    'path': path,
+                remote_files[relative_path] = {
+                    'path': relative_path,
+                    'file_path': file_path,  # Keep original path for download URL
                     'id': item['id'],
                     'name': item['name'],
                     'size': item['size'],
@@ -192,6 +199,7 @@ class SyncEngine:
             if self.api_client.download_file(
                 conflict['remote']['id'],
                 conflict['remote']['name'],
+                conflict['remote']['file_path'],  # Add file_path parameter
                 local_path
             ):
                 self.logger.info(f"Conflict resolved (kept remote): {path}")
@@ -233,7 +241,13 @@ class SyncEngine:
             self.downloading_files.add(path)
             
             try:
-                if self.api_client.download_file(remote['id'], remote['name'], local_path):
+                # Pass file_path parameter for correct download URL construction
+                if self.api_client.download_file(
+                    remote['id'], 
+                    remote['name'], 
+                    remote['file_path'],  # Full path like "/folder/file.txt"
+                    local_path
+                ):
                     self.state[path] = {
                         'modified_time': remote['modified_time'],
                         'size': remote['size']
