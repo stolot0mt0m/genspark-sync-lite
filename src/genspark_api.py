@@ -101,6 +101,33 @@ class GenSparkAPIClient:
             self.logger.error(f"Failed to get file metadata: {e}")
             return None
     
+    def get_download_url(self, file_id: str) -> Optional[str]:
+        """
+        Get direct download URL for a file
+        
+        Args:
+            file_id: Unique file ID
+            
+        Returns:
+            Download URL or None
+        """
+        try:
+            # Request download URL from API
+            url = f"{self.BASE_URL}/api/aidrive/download/{file_id}"
+            
+            self.logger.debug(f"Requesting download URL for: {file_id}")
+            response = self.session.get(url, timeout=10)
+            response.raise_for_status()
+            
+            data = response.json()
+            download_url = data.get("url") or data.get("download_url")
+            
+            return download_url
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get download URL: {e}")
+            return None
+    
     def download_file(self, file_id: str, file_name: str, destination: Path) -> bool:
         """
         Download a file from AI Drive
@@ -114,11 +141,16 @@ class GenSparkAPIClient:
             True if successful, False otherwise
         """
         try:
-            # Download URL pattern (needs verification)
-            url = f"{self.BASE_URL}/api/side/wget_upload_url/files/{file_name}"
+            # Step 1: Get download URL
+            download_url = self.get_download_url(file_id)
+            if not download_url:
+                self.logger.error(f"Could not get download URL for {file_name}")
+                return False
             
             self.logger.info(f"Downloading: {file_name}")
-            response = self.session.get(url, stream=True, timeout=30)
+            
+            # Step 2: Download from Azure Blob Storage
+            response = requests.get(download_url, stream=True, timeout=60)
             response.raise_for_status()
             
             # Write to destination
