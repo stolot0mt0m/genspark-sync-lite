@@ -484,7 +484,8 @@ class SyncEngine:
             if relative_path in remote_files:
                 remote = remote_files[relative_path]
                 self.logger.info(f"Deleting from remote: {relative_path}")
-                self.api_client.delete_file(remote['id'], remote['name'])
+                # Use path-based delete (not ID!)
+                self.api_client.delete_file('', remote['name'], remote['file_path'])
             
             # Remove from state
             if relative_path in self.state:

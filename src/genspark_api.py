@@ -427,31 +427,46 @@ class GenSparkAPIClient:
     
     def delete_file(self, file_id: str, filename: str, file_path: str = None) -> bool:
         """
-        Delete a file from AI Drive
+        Delete a file or folder from AI Drive
+        
+        Web UI uses: DELETE /api/aidrive/delete/files/{path}
         
         Args:
-            file_id: Unique file ID
-            filename: Filename
+            file_id: Unique file ID (deprecated, path is preferred)
+            filename: Filename for logging
             file_path: Full file path (e.g., "/folder/file.txt")
             
         Returns:
             True if successful, False otherwise
         """
         try:
-            # Use path-based delete if available, otherwise use ID
+            # ALWAYS prefer path-based delete (matches Web UI behavior)
             if file_path:
                 from urllib.parse import quote
                 clean_path = file_path.lstrip('/')
                 encoded_path = quote(clean_path, safe='/')
+                # Don't add trailing slash - API handles both files and folders
                 url = f"{self.API_BASE}/delete/files/{encoded_path}"
             else:
+                # Fallback: Old ID-based endpoint (may not work)
+                self.logger.warning(f"Using deprecated ID-based delete for: {filename}")
                 url = f"{self.API_BASE}/files/{file_id}"
             
             self.logger.info(f"Deleting: {filename}")
+            self.logger.debug(f"Delete URL: {url}")
             response = self.session.delete(url, timeout=10)
+            
+            # Log response for debugging
+            if response.status_code != 200:
+                try:
+                    error_data = response.json()
+                    self.logger.error(f"Delete failed [{response.status_code}]: {error_data}")
+                except:
+                    self.logger.error(f"Delete failed [{response.status_code}]: {response.text[:200]}")
+            
             response.raise_for_status()
             
-            self.logger.info(f"Deleted: {filename}")
+            self.logger.info(f"✅ Deleted: {filename}")
             return True
             
         except Exception as e:
@@ -477,15 +492,15 @@ class GenSparkAPIClient:
         try:
             self.logger.info(f"Updating file: {remote_filename}")
             
-            # Step 1: Try to delete old version
-            if file_id:
-                # Use ID-based delete (works for root files)
-                if not self.delete_file(file_id, remote_filename):
-                    self.logger.debug(f"ID-based delete failed, skipping delete step")
-            elif file_path:
-                # Use path-based delete (may timeout for folder files)
+            # Step 1: Try to delete old version using path (not ID!)
+            # Always prefer path-based delete (works for all files)
+            if file_path:
                 if not self.delete_file('', remote_filename, file_path):
                     self.logger.debug(f"Path-based delete failed, skipping delete step")
+            elif file_id:
+                # Fallback to ID-based delete (deprecated, API prefers path)
+                if not self.delete_file(file_id, remote_filename):
+                    self.logger.debug(f"ID-based delete failed, skipping delete step")
             
             # Step 2: Upload new version (will handle "already exists")
             return self.upload_file(local_path, remote_filename)
