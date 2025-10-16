@@ -218,6 +218,15 @@ class GenSparkAPIClient:
             
             self.logger.info(f"Creating folder: {folder_path}")
             response = self.session.post(url, timeout=10)
+            
+            # Log response details
+            self.logger.debug(f"mkdir response status: {response.status_code}")
+            if response.status_code != 200:
+                try:
+                    self.logger.error(f"mkdir response: {response.json()}")
+                except:
+                    self.logger.error(f"mkdir response text: {response.text[:200]}")
+            
             response.raise_for_status()
             
             self.logger.info(f"Folder created: {folder_path}")
