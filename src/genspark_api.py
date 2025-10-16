@@ -67,8 +67,8 @@ class GenSparkAPIClient:
         """
         try:
             # Discovered from Chrome DevTools:
-            # GET https://www.genspark.ai/api/aidrive/files?filter_type=all&sort_by=modified_desc&file_type=all
-            url = f"{self.API_BASE}/files"
+            # GET https://www.genspark.ai/api/aidrive/ls/files/?filter_type=all&sort_by=modified_desc&file_type=all
+            url = f"{self.API_BASE}/ls/files/"
             params = {
                 "filter_type": "all",
                 "sort_by": "modified_desc",
