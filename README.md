@@ -57,23 +57,57 @@
 - **Python:** 3.11+
 - **Chrome:** Mit genspark.ai Login
 
-### Setup
+### Automated Setup (EMPFOHLEN)
 
 ```bash
-# 1. Navigiere zum Projekt
-cd /home/user/webapp/genspark-sync-lite
+# Download und Installation mit einem Befehl
+curl -fsSL https://raw.githubusercontent.com/YOUR_REPO/install.sh | bash
 
-# 2. Installiere Dependencies
-pip3 install -r requirements.txt
-
-# 3. Teste API Connection
-cd src
-python3 genspark_api.py
-# Sollte zeigen: "✅ API connection successful!"
-
-# 4. Starte die App
-python3 sync_app.py
+# Oder lokal:
+cd ~/genspark-sync-lite
+chmod +x install.sh
+./install.sh
 ```
+
+### Manual Setup
+
+```bash
+# 1. Virtual Environment erstellen
+cd ~/genspark-sync-lite
+python3 -m venv venv
+source venv/bin/activate
+
+# 2. Dependencies installieren
+pip install -r requirements.txt
+
+# 3. Cookie Authentication testen
+python3 debug_cookies.py
+# Sollte zeigen: "✅ SUCCESS! API call worked!"
+
+# 4. App starten
+./launch.sh
+```
+
+### 🔧 Troubleshooting: 403 Forbidden Error
+
+Falls du den Fehler `403 Client Error: Forbidden` bekommst:
+
+1. **Fresh Login in Chrome:**
+   ```bash
+   # 1. Öffne Chrome
+   # 2. Gehe zu: https://www.genspark.ai/aidrive/files/
+   # 3. Login mit deinen Zugangsdaten
+   # 4. WICHTIG: Chrome KOMPLETT schließen (Cmd+Q auf Mac!)
+   ```
+
+2. **Cookie Diagnostics laufen lassen:**
+   ```bash
+   cd ~/genspark-sync-lite
+   source venv/bin/activate
+   python3 debug_cookies.py
+   ```
+
+3. **Siehe [COOKIE_FIX.md](COOKIE_FIX.md) für Details**
 
 ---
 

@@ -23,6 +23,18 @@ class GenSparkAPIClient:
         self.logger = logging.getLogger('GenSparkAPI')
         self.cookies_loaded = False
         
+        # Add browser-like headers to avoid detection
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'en-US,en;q=0.9,de;q=0.8',
+            'Referer': 'https://www.genspark.ai/aidrive/files/',
+            'Origin': 'https://www.genspark.ai',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-origin',
+        })
+        
     def load_cookies_from_chrome(self) -> bool:
         """Extract session cookies from Chrome browser"""
         try:
