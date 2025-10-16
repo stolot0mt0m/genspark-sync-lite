@@ -24,7 +24,7 @@ Minimaler Ressourcen-Verbrauch: ~30MB RAM, <1% CPU
 - **Lokale Änderungen:** Sofort hochgeladen (Watchdog File Monitoring)
 - **Remote Änderungen:** Polling alle 30s (konfigurierbar)
 - **Ordner-Support:** Vollständige Ordnerstruktur-Synchronisation
-- **Conflict Detection:** Erkennt echte Konflikte (beide Seiten geändert)
+- **Conflict Resolution:** 🔥 **LOCAL WINS** - Lokale Version gewinnt immer bei Konflikten
 
 ### 🎯 Smart & Effizient
 - **Direkte HTTP API** - Kein Browser, keine Extension
@@ -118,6 +118,44 @@ rm ~/GenSpark\ AI\ Drive/test.txt
 - Alle 30s wird AI Drive gepollt
 - Neue/geänderte Dateien → Automatisch heruntergeladen
 - Gelöschte Dateien → Automatisch lokal gelöscht
+
+### Konflikt-Auflösung (LOCAL WINS)
+
+**Was ist ein Konflikt?**
+Ein Konflikt entsteht, wenn:
+- Dieselbe Datei **lokal UND remote** verändert wurde
+- Beide Änderungen seit dem letzten Sync passiert sind
+
+**Wie werden Konflikte aufgelöst?**
+Die App verwendet die **LOCAL WINS** Strategie:
+
+1. ⚠️ Konflikt erkannt → Log-Meldung: `"⚠️ X conflicts detected (both sides modified)"`
+2. 🔥 Lokale Version gewinnt → Log-Meldung: `"🔥 LOCAL WINS strategy: Resolving conflicts by keeping local version"`
+3. 🗑️ Remote-Datei wird gelöscht (alte Version)
+4. 📤 Lokale Datei wird hochgeladen (neue Version)
+5. ✅ Konflikt gelöst → Log-Meldung: `"✅ Conflict resolved (local wins): datei.txt"`
+
+**Beispiel:**
+```bash
+# Tag 1: Datei lokal und remote identisch
+echo "Version 1" > ~/GenSpark\ AI\ Drive/test.txt
+
+# Tag 2: Offline gearbeitet → Lokal geändert
+echo "Local Version 2" > ~/GenSpark\ AI\ Drive/test.txt
+
+# Tag 3: Remote über Web-Interface geändert (parallel)
+# → Konflikt! Beide Seiten haben unterschiedliche Version 2
+
+# App-Verhalten:
+# ⚠️ Konflikt erkannt
+# 🔥 LOCAL WINS → Remote gelöscht, Local hochgeladen
+# ✅ Ergebnis: "Local Version 2" ist jetzt überall
+```
+
+**Wichtig:**
+- 💾 **Lokale Datei wird NIE überschrieben** bei Konflikten
+- 🎯 **Remote-Version geht verloren** - lokale Version gewinnt immer
+- 📋 **Alle Konflikt-Auflösungen werden geloggt**
 
 ### Stoppen
 
