@@ -16,7 +16,7 @@ class GenSparkAPIClient:
     
     BASE_URL = "https://www.genspark.ai"
     AI_DRIVE_URL = f"{BASE_URL}/aidrive/files/"  # Web UI for AI Drive
-    API_BASE = f"{BASE_URL}/api/aidrive/recent"  # Discovered via Chrome DevTools Network tab
+    API_BASE = f"{BASE_URL}/api/aidrive"  # API base path
     
     def __init__(self):
         self.session = requests.Session()
@@ -66,11 +66,13 @@ class GenSparkAPIClient:
             List of file/folder dictionaries or None on error
         """
         try:
-            # TEMPORARY: Fall back to working endpoint for root files
-            # TODO: Discover correct endpoint for folders+files from Chrome DevTools
+            # Discovered from Chrome DevTools:
+            # GET https://www.genspark.ai/api/aidrive/files?filter_type=all&sort_by=modified_desc&file_type=all
             url = f"{self.API_BASE}/files"
             params = {
-                "limit": limit
+                "filter_type": "all",
+                "sort_by": "modified_desc",
+                "file_type": "all"
             }
             
             self.logger.debug(f"Listing files: {url}")
