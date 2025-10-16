@@ -34,11 +34,13 @@
 - **Local → Cloud:** Watchdog erkennt Änderungen sofort → Upload
 - **Cloud → Local:** Polling alle 30s → Download neuer Dateien
 
-### ⚠️ Conflict Detection & Local Priority
-- **Local Priority (fest):** Lokaler Ordner ist immer die Source of Truth
-  - Remote-only Dateien → **Aus AI Drive gelöscht**
-  - Local-only Dateien → **Zu AI Drive hochgeladen**
-  - Lokale Änderungen → **Immer hochgeladen**
+### ⚠️ Intelligente Bidirektionale Synchronisation
+- **Smart Sync:** Unterscheidet zwischen "neu" und "gelöscht"
+  - **Neue lokale Dateien** → Zu AI Drive hochgeladen
+  - **Neue remote Dateien** → Lokal heruntergeladen  
+  - **Lokal gelöschte Dateien** → Aus AI Drive gelöscht
+  - **Remote gelöschte Dateien** → Lokal gelöscht
+- **State Tracking:** Merkt sich alle synchronisierten Dateien
 - **True Conflicts:** Erkennt wenn Datei auf beiden Seiten geändert wurde
   - Fragt User welche Version behalten werden soll
   - Unterstützt: "Local behalten", "Remote behalten", "Skip"
@@ -146,21 +148,29 @@ Falls du den Fehler `403 Client Error: Forbidden` bekommst:
 
 5. **Sync Strategy:**
    ```
-   ✅ LOCAL PRIORITY (fest eingestellt)
-   Lokaler Ordner ist die Source of Truth
+   ✅ BIDIREKTIONALE SYNCHRONISATION (automatisch)
+   Beide Seiten bleiben automatisch synchron
    ```
    
-   **Verhalten:**
+   **Intelligentes Verhalten:**
    
-   **Szenario 1: Ordner nur in WebGUI (remote-only)**
-   - Du hast "ParentFolder" nur in der WebGUI, nicht lokal
-   - **Aktion**: Ordner wird aus AI Drive **gelöscht** ❌
-   - **Grund**: Lokaler Ordner hat Vorrang
+   **Szenario 1: Neue Datei lokal erstellt**
+   - **Aktion**: Wird zu AI Drive **hochgeladen** ✅
    
-   **Szenario 2: Ordner nur lokal (local-only)**
-   - Du hast "MyFolder" lokal, aber nicht in WebGUI
-   - **Aktion**: Ordner wird zu AI Drive **hochgeladen** ✅
-   - **Grund**: Lokaler Ordner ist führend
+   **Szenario 2: Neue Datei in AI Drive**
+   - **Aktion**: Wird lokal **heruntergeladen** ✅
+   
+   **Szenario 3: Datei lokal gelöscht**
+   - **Aktion**: Wird aus AI Drive **gelöscht** ❌
+   
+   **Szenario 4: Datei in AI Drive gelöscht**
+   - **Aktion**: Wird lokal **gelöscht** ❌
+   
+   **Wie funktioniert das?**
+   - Die App merkt sich alle synchronisierten Dateien
+   - Wenn eine Datei fehlt, prüft sie: Neu oder gelöscht?
+   - **Neu** (nicht im Verlauf) → Kopieren
+   - **Gelöscht** (war im Verlauf) → Löschen
 
 ### Während des Betriebs
 
@@ -344,10 +354,11 @@ Choose action [D/X/S]:
 - ✅ **Conflict detection** - Detects true conflicts (both sides changed)
 - ✅ **Folder deletion** - Deletes all files in folder when folder is deleted locally
 - ✅ **Path-based deletion** - Uses correct DELETE endpoint with file paths
-- ✅ **Local Priority (fest)** - Lokaler Ordner ist Source of Truth
-  - Remote-only items → Aus AI Drive gelöscht
-  - Local-only items → Zu AI Drive hochgeladen
-  - Keine Konfiguration nötig, immer lokal-führend
+- ✅ **Intelligente Bidirektionale Sync** - Smart Deletion Handling
+  - Unterscheidet zwischen "neu" und "gelöscht" mit State Tracking
+  - Neue Dateien → Automatisch kopiert (beide Richtungen)
+  - Gelöschte Dateien → Automatisch gelöscht (beide Richtungen)
+  - Keine manuelle Konfiguration nötig
 
 ### 🔧 In Progress
 - 🔧 **Testing** - Comprehensive testing of all features with real-world scenarios

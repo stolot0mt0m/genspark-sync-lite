@@ -23,7 +23,7 @@ class GenSparkSyncApp:
     def __init__(self, sync_folder: Path, poll_interval: int = 30, sync_strategy: str = 'local'):
         self.sync_folder = Path(sync_folder)
         self.poll_interval = poll_interval
-        self.sync_strategy = sync_strategy  # Fixed to 'local' - local folder is source of truth
+        self.sync_strategy = sync_strategy  # Fixed to 'local' - bidirectional sync with smart deletion handling
         
         # Components
         self.api_client: Optional[GenSparkAPIClient] = None
@@ -263,12 +263,14 @@ def main():
     else:
         poll_interval = 30
     
-    # Use LOCAL priority as fixed strategy
+    # Use LOCAL priority as fixed strategy (bidirectional sync)
     sync_strategy = 'local'
-    print("\n✅ Sync Strategy: LOCAL PRIORITY")
-    print("   Local folder is the source of truth")
-    print("   - Remote-only files → Deleted from AI Drive")
-    print("   - Local-only files → Uploaded to AI Drive")
+    print("\n✅ Sync Strategy: BIDIRECTIONAL SYNC")
+    print("   Both sides stay in sync automatically")
+    print("   - New local files → Uploaded to AI Drive")
+    print("   - New remote files → Downloaded to local")
+    print("   - Deleted local files → Deleted from AI Drive")
+    print("   - Deleted remote files → Deleted from local")
     print()
     
     # Create app with sync strategy

@@ -21,7 +21,7 @@ class SyncEngine:
     def __init__(self, local_root: Path, api_client: GenSparkAPIClient, sync_strategy: str = 'local'):
         self.local_root = Path(local_root)
         self.api_client = api_client
-        self.sync_strategy = sync_strategy  # Fixed to 'local' - local folder is source of truth
+        self.sync_strategy = sync_strategy  # Fixed to 'local' - bidirectional sync with smart deletion handling
         self.logger = logging.getLogger('SyncEngine')
         
         # State file tracking
@@ -303,33 +303,58 @@ class SyncEngine:
         
         # Handle remote-only files (files that exist on remote but not locally)
         remote_only = set(remote_files.keys()) - set(local_files.keys())
-        self.logger.info(f"Files to download: {len(remote_only)}")
         
-        if remote_only and self.sync_strategy == 'local':
-            # Local priority: Delete remote-only files
-            self.logger.warning(f"⚠️  Sync strategy: LOCAL priority")
-            self.logger.warning(f"⚠️  {len(remote_only)} remote-only files will be DELETED from AI Drive")
-            
-            for path in remote_only:
+        # Intelligently split remote-only into:
+        # 1. New remote files (not in state) → Download
+        # 2. Deleted local files (in state) → Delete from remote
+        new_remote_files = set()
+        deleted_local_files = set()
+        
+        for path in remote_only:
+            if path in self.state:
+                # File was synced before but now missing locally → Deleted locally
+                deleted_local_files.add(path)
+            else:
+                # File never synced before → New remote file
+                new_remote_files.add(path)
+        
+        # Handle files deleted locally (delete from remote)
+        if deleted_local_files:
+            self.logger.info(f"📤 Files deleted locally: {len(deleted_local_files)}")
+            for path in deleted_local_files:
                 remote = remote_files[path]
-                self.logger.info(f"Deleting remote-only file: {path}")
+                self.logger.info(f"Deleting from AI Drive (deleted locally): {path}")
                 if self.api_client.delete_file('', remote['name'], remote['file_path']):
                     self.stats['remote_only_deleted'] += 1
-                    # Remove from state if exists
+                    # Remove from state
                     if path in self.state:
                         del self.state[path]
         
-        elif remote_only and self.sync_strategy == 'ask':
-            # Ask strategy: Prompt user for each remote-only file
-            self.logger.warning(f"⚠️  Sync strategy: ASK for each file")
-            self.logger.warning(f"⚠️  Found {len(remote_only)} remote-only files")
+        # Handle new remote files (download)
+        self.logger.info(f"Files to download: {len(new_remote_files)}")
+        
+        if new_remote_files and self.sync_strategy == 'local':
+            # Local priority: Delete new remote files (should not happen with bidirectional sync)
+            self.logger.warning(f"⚠️  Sync strategy: LOCAL priority")
+            self.logger.warning(f"⚠️  {len(new_remote_files)} new remote files will be DELETED from AI Drive")
             
-            for path in remote_only:
+            for path in new_remote_files:
+                remote = remote_files[path]
+                self.logger.info(f"Deleting new remote file: {path}")
+                if self.api_client.delete_file('', remote['name'], remote['file_path']):
+                    self.stats['remote_only_deleted'] += 1
+        
+        elif new_remote_files and self.sync_strategy == 'ask':
+            # Ask strategy: Prompt user for each new remote file
+            self.logger.warning(f"⚠️  Sync strategy: ASK for each file")
+            self.logger.warning(f"⚠️  Found {len(new_remote_files)} new remote files")
+            
+            for path in new_remote_files:
                 remote = remote_files[path]
                 local_path = self.local_root / path
                 
                 # Prompt user
-                print(f"\n⚠️  Remote-only file: {path}")
+                print(f"\n⚠️  New remote file: {path}")
                 print(f"    Size: {remote['size']} bytes")
                 print(f"    Modified: {datetime.fromtimestamp(remote['modified_time']).strftime('%Y-%m-%d %H:%M:%S')}")
                 print(f"    [D] Download to local")
@@ -380,8 +405,8 @@ class SyncEngine:
                     print(f"⏭️  Skipped: {path}")
         
         else:
-            # Remote priority (or default): Download remote-only files
-            for path in remote_only:
+            # Default: Download new remote files
+            for path in new_remote_files:
                 remote = remote_files[path]
                 local_path = self.local_root / path
                 
@@ -410,14 +435,47 @@ class SyncEngine:
         
         # Handle local-only files (files that exist locally but not on remote)
         local_only = set(local_files.keys()) - set(remote_files.keys())
-        self.logger.info(f"Files to upload: {len(local_only)}")
         
-        if local_only and self.sync_strategy == 'remote':
-            # Remote priority: Delete local-only files
+        # Intelligently split local-only into:
+        # 1. New local files (not in state) → Upload
+        # 2. Deleted remote files (in state) → Delete locally
+        new_local_files = set()
+        deleted_remote_files = set()
+        
+        for path in local_only:
+            if path in self.state:
+                # File was synced before but now missing from remote → Deleted remotely
+                deleted_remote_files.add(path)
+            else:
+                # File never synced before → New local file
+                new_local_files.add(path)
+        
+        # Handle files deleted from remote (delete locally)
+        if deleted_remote_files:
+            self.logger.info(f"📥 Files deleted from AI Drive: {len(deleted_remote_files)}")
+            for path in deleted_remote_files:
+                local_path = self.local_root / path
+                self.logger.info(f"Deleting file (deleted from remote): {path}")
+                try:
+                    if local_path.exists():
+                        local_path.unlink()
+                        self.stats['local_only_deleted'] += 1
+                        self.logger.info(f"✅ Deleted local file: {path}")
+                    # Remove from state
+                    if path in self.state:
+                        del self.state[path]
+                except Exception as e:
+                    self.logger.error(f"Failed to delete local file {path}: {e}")
+        
+        # Handle new local files (upload to remote)
+        self.logger.info(f"Files to upload: {len(new_local_files)}")
+        
+        if new_local_files and self.sync_strategy == 'remote':
+            # Remote priority: Delete new local files (should not happen with 'local' default)
             self.logger.warning(f"⚠️  Sync strategy: REMOTE priority")
-            self.logger.warning(f"⚠️  {len(local_only)} local-only files will be DELETED from local folder")
+            self.logger.warning(f"⚠️  {len(new_local_files)} new local files will be DELETED")
             
-            for path in local_only:
+            for path in new_local_files:
                 local_path = self.local_root / path
                 self.logger.info(f"Deleting local-only file: {path}")
                 try:
@@ -431,17 +489,17 @@ class SyncEngine:
                 except Exception as e:
                     self.logger.error(f"Failed to delete local file {path}: {e}")
         
-        elif local_only and self.sync_strategy == 'ask':
-            # Ask strategy: Prompt user for each local-only file
+        elif new_local_files and self.sync_strategy == 'ask':
+            # Ask strategy: Prompt user for each new local file
             self.logger.warning(f"⚠️  Sync strategy: ASK for each file")
-            self.logger.warning(f"⚠️  Found {len(local_only)} local-only files")
+            self.logger.warning(f"⚠️  Found {len(new_local_files)} new local files")
             
-            for path in local_only:
+            for path in new_local_files:
                 local = local_files[path]
                 local_path = self.local_root / path
                 
                 # Prompt user
-                print(f"\n⚠️  Local-only file: {path}")
+                print(f"\n⚠️  New local file: {path}")
                 print(f"    Size: {local['size']} bytes")
                 print(f"    Modified: {datetime.fromtimestamp(local['modified_time']).strftime('%Y-%m-%d %H:%M:%S')}")
                 print(f"    [U] Upload to remote")
@@ -494,8 +552,8 @@ class SyncEngine:
                     print(f"⏭️  Skipped: {path}")
         
         else:
-            # Local priority (or default): Upload local-only files
-            for path in local_only:
+            # Local priority (or default): Upload new local files
+            for path in new_local_files:
                 local = local_files[path]
                 local_path = self.local_root / path
                 
