@@ -149,22 +149,40 @@ class GenSparkAPIClient:
             self.logger.error(f"Failed to download {file_name}: {e}")
             return False
     
-    def request_upload_url(self, filename: str) -> Optional[Dict[str, str]]:
+    def request_upload_url(self, filename: str, filesize: int = 0) -> Optional[Dict[str, str]]:
         """
         Request upload URL and token for a file
         
         Args:
             filename: Name of file to upload
+            filesize: Size of file in bytes
             
         Returns:
             Dict with 'upload_url', 'token', 'expires_at' or None
         """
         try:
-            # Upload endpoint pattern: /api/aidrive/upload/files/{filename}
-            url = f"{self.BASE_URL}/api/aidrive/upload/files/{filename}"
+            # Try different endpoint patterns
+            # Pattern 1: POST with JSON body
+            url = f"{self.API_BASE}/upload/files"
+            payload = {
+                "filename": filename,
+                "size": filesize
+            }
             
-            self.logger.debug(f"Requesting upload URL for: {filename}")
-            response = self.session.post(url, timeout=10)
+            self.logger.debug(f"Requesting upload URL for: {filename} (size: {filesize})")
+            self.logger.debug(f"URL: {url}")
+            self.logger.debug(f"Payload: {payload}")
+            
+            response = self.session.post(url, json=payload, timeout=10)
+            
+            # Log response for debugging
+            self.logger.debug(f"Response status: {response.status_code}")
+            try:
+                response_data = response.json()
+                self.logger.debug(f"Response data: {response_data}")
+            except:
+                self.logger.debug(f"Response text: {response.text[:200]}")
+            
             response.raise_for_status()
             
             data = response.json()
@@ -193,8 +211,11 @@ class GenSparkAPIClient:
             True if successful, False otherwise
         """
         try:
+            # Get file size
+            filesize = local_path.stat().st_size
+            
             # Step 1: Request upload URL
-            upload_data = self.request_upload_url(remote_filename)
+            upload_data = self.request_upload_url(remote_filename, filesize)
             if not upload_data:
                 return False
             
