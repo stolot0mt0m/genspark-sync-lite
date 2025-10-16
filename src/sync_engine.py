@@ -27,6 +27,9 @@ class SyncEngine:
         self.state: Dict[str, Dict[str, Any]] = {}
         self.load_state()
         
+        # Track files currently being downloaded (to avoid re-uploading)
+        self.downloading_files: Set[str] = set()
+        
         # Sync statistics
         self.stats = {
             'uploads': 0,
@@ -95,6 +98,10 @@ class SyncEngine:
         
         for item in items:
             if item['type'] == 'file':
+                # Skip thumbnail files (they're generated, not real user files)
+                if item['name'].startswith('thumb_') and item['name'].endswith('.jpg'):
+                    continue
+                
                 path = item['path'] + '/' + item['name'] if item['path'] else item['name']
                 path = path.lstrip('/')
                 
@@ -222,12 +229,20 @@ class SyncEngine:
             remote = remote_files[path]
             local_path = self.local_root / path
             
-            if self.api_client.download_file(remote['id'], remote['name'], local_path):
-                self.state[path] = {
-                    'modified_time': remote['modified_time'],
-                    'size': remote['size']
-                }
-                self.stats['downloads'] += 1
+            # Mark as downloading to avoid file watcher re-uploading
+            self.downloading_files.add(path)
+            
+            try:
+                if self.api_client.download_file(remote['id'], remote['name'], local_path):
+                    self.state[path] = {
+                        'modified_time': remote['modified_time'],
+                        'size': remote['size']
+                    }
+                    self.stats['downloads'] += 1
+            finally:
+                # Remove from downloading set after a delay (file watcher needs time)
+                # We'll clean this up after sync completes
+                pass
         
         # Upload new local files
         local_only = set(local_files.keys()) - set(remote_files.keys())
@@ -254,12 +269,25 @@ class SyncEngine:
         
         self.save_state()
         
+        # Clear downloading files after a short delay
+        # (File watcher events are debounced by 2 seconds)
+        import threading
+        def clear_downloading():
+            time.sleep(3)
+            self.downloading_files.clear()
+        threading.Thread(target=clear_downloading, daemon=True).start()
+        
         self.logger.info(f"Sync complete: {self.stats['uploads']} uploads, {self.stats['downloads']} downloads")
         return self.stats
     
     def handle_local_change(self, path: Path, event_type: str):
         """Handle a local file change"""
         relative_path = str(path.relative_to(self.local_root))
+        
+        # Skip if we're currently downloading this file
+        if relative_path in self.downloading_files:
+            self.logger.debug(f"Skipping upload for {relative_path} (currently downloading)")
+            return
         
         if event_type in ['created', 'modified']:
             # Upload file

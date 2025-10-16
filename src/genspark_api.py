@@ -149,7 +149,8 @@ class GenSparkAPIClient:
             Dict with 'upload_url', 'token', 'expires_at' or None
         """
         try:
-            url = f"{self.API_BASE}/files/{filename}"
+            # Upload endpoint pattern: /api/aidrive/upload/files/{filename}
+            url = f"{self.BASE_URL}/api/aidrive/upload/files/{filename}"
             
             self.logger.debug(f"Requesting upload URL for: {filename}")
             response = self.session.post(url, timeout=10)
