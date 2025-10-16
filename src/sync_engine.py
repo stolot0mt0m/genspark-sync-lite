@@ -45,6 +45,7 @@ class SyncEngine:
             'conflicts': 0,
             'errors': 0,
             'remote_only_deleted': 0,  # Count remote-only deletions
+            'local_only_deleted': 0,   # Count local-only deletions
         }
     
     def load_state(self):
@@ -407,38 +408,122 @@ class SyncEngine:
                     # We'll clean this up after sync completes
                     pass
         
-        # Upload new local files
+        # Handle local-only files (files that exist locally but not on remote)
         local_only = set(local_files.keys()) - set(remote_files.keys())
         self.logger.info(f"Files to upload: {len(local_only)}")
-        for path in local_only:
-            local = local_files[path]
-            local_path = self.local_root / path
+        
+        if local_only and self.sync_strategy == 'remote':
+            # Remote priority: Delete local-only files
+            self.logger.warning(f"⚠️  Sync strategy: REMOTE priority")
+            self.logger.warning(f"⚠️  {len(local_only)} local-only files will be DELETED from local folder")
             
-            # Use lock to prevent concurrent uploads
-            with self.upload_lock:
-                # Skip if already uploading
-                if path in self.uploading_files:
-                    self.logger.debug(f"Skipping {path} (upload already in progress)")
-                    continue
-                
-                # Mark as uploading
-                self.uploading_files.add(path)
+            for path in local_only:
+                local_path = self.local_root / path
+                self.logger.info(f"Deleting local-only file: {path}")
+                try:
+                    if local_path.exists():
+                        local_path.unlink()
+                        self.stats['local_only_deleted'] += 1
+                        self.logger.info(f"✅ Deleted local file: {path}")
+                        # Remove from state if exists
+                        if path in self.state:
+                            del self.state[path]
+                except Exception as e:
+                    self.logger.error(f"Failed to delete local file {path}: {e}")
+        
+        elif local_only and self.sync_strategy == 'ask':
+            # Ask strategy: Prompt user for each local-only file
+            self.logger.warning(f"⚠️  Sync strategy: ASK for each file")
+            self.logger.warning(f"⚠️  Found {len(local_only)} local-only files")
             
-            try:
-                self.logger.info(f"Uploading new file: {path}")
+            for path in local_only:
+                local = local_files[path]
+                local_path = self.local_root / path
                 
-                # Use full path for files in folders (e.g., "TestOrdner/file.txt")
-                # API expects: /api/aidrive/get_upload_url/files/TestOrdner/file.txt
-                if self.api_client.upload_file(local_path, path):
-                    self.state[path] = {
-                        'modified_time': local['modified_time'],
-                        'size': local['size']
-                    }
-                    self.stats['uploads'] += 1
-            finally:
-                # Always remove from uploading set
+                # Prompt user
+                print(f"\n⚠️  Local-only file: {path}")
+                print(f"    Size: {local['size']} bytes")
+                print(f"    Modified: {datetime.fromtimestamp(local['modified_time']).strftime('%Y-%m-%d %H:%M:%S')}")
+                print(f"    [U] Upload to remote")
+                print(f"    [X] Delete from local")
+                print(f"    [S] Skip (do nothing)")
+                
+                while True:
+                    choice = input("Choose action [U/X/S]: ").strip().upper()
+                    if choice in ['U', 'X', 'S']:
+                        break
+                    print("Invalid choice. Please enter U, X, or S.")
+                
+                if choice == 'U':
+                    # Upload file
+                    self.logger.info(f"User chose: Upload {path}")
+                    
+                    with self.upload_lock:
+                        if path in self.uploading_files:
+                            continue
+                        self.uploading_files.add(path)
+                    
+                    try:
+                        if self.api_client.upload_file(local_path, path):
+                            self.state[path] = {
+                                'modified_time': local['modified_time'],
+                                'size': local['size']
+                            }
+                            self.stats['uploads'] += 1
+                            print(f"✅ Uploaded: {path}")
+                    finally:
+                        with self.upload_lock:
+                            self.uploading_files.discard(path)
+                
+                elif choice == 'X':
+                    # Delete from local
+                    self.logger.info(f"User chose: Delete local {path}")
+                    try:
+                        if local_path.exists():
+                            local_path.unlink()
+                            self.stats['local_only_deleted'] += 1
+                            if path in self.state:
+                                del self.state[path]
+                            print(f"✅ Deleted from local: {path}")
+                    except Exception as e:
+                        print(f"❌ Failed to delete: {e}")
+                
+                else:  # choice == 'S'
+                    # Skip - do nothing
+                    self.logger.info(f"User chose: Skip {path}")
+                    print(f"⏭️  Skipped: {path}")
+        
+        else:
+            # Local priority (or default): Upload local-only files
+            for path in local_only:
+                local = local_files[path]
+                local_path = self.local_root / path
+                
+                # Use lock to prevent concurrent uploads
                 with self.upload_lock:
-                    self.uploading_files.discard(path)
+                    # Skip if already uploading
+                    if path in self.uploading_files:
+                        self.logger.debug(f"Skipping {path} (upload already in progress)")
+                        continue
+                    
+                    # Mark as uploading
+                    self.uploading_files.add(path)
+                
+                try:
+                    self.logger.info(f"Uploading new file: {path}")
+                    
+                    # Use full path for files in folders (e.g., "TestOrdner/file.txt")
+                    # API expects: /api/aidrive/get_upload_url/files/TestOrdner/file.txt
+                    if self.api_client.upload_file(local_path, path):
+                        self.state[path] = {
+                            'modified_time': local['modified_time'],
+                            'size': local['size']
+                        }
+                        self.stats['uploads'] += 1
+                finally:
+                    # Always remove from uploading set
+                    with self.upload_lock:
+                        self.uploading_files.discard(path)
         
         # Handle modified files (no conflicts)
         common_files = set(local_files.keys()) & set(remote_files.keys())
@@ -519,7 +604,21 @@ class SyncEngine:
             self.uploading_files.clear()
         threading.Thread(target=clear_tracking_sets, daemon=True).start()
         
-        self.logger.info(f"Sync complete: {self.stats['uploads']} uploads, {self.stats['downloads']} downloads")
+        # Log summary
+        summary_parts = []
+        if self.stats['uploads'] > 0:
+            summary_parts.append(f"{self.stats['uploads']} uploads")
+        if self.stats['downloads'] > 0:
+            summary_parts.append(f"{self.stats['downloads']} downloads")
+        if self.stats['remote_only_deleted'] > 0:
+            summary_parts.append(f"{self.stats['remote_only_deleted']} remote deletions")
+        if self.stats['local_only_deleted'] > 0:
+            summary_parts.append(f"{self.stats['local_only_deleted']} local deletions")
+        
+        if summary_parts:
+            self.logger.info(f"Sync complete: {', '.join(summary_parts)}")
+        else:
+            self.logger.info("Sync complete: No changes")
         return self.stats
     
     def handle_local_change(self, path: Path, event_type: str):

@@ -120,12 +120,24 @@ class GenSparkSyncApp:
                     stats = self.sync_engine.sync_once()
                     
                     # Log if there were changes
-                    if stats['uploads'] > 0 or stats['downloads'] > 0:
-                        self.logger.info(
-                            f"Sync: {stats['downloads']} downloads, "
-                            f"{stats['uploads']} uploads, "
-                            f"{stats['conflicts']} conflicts"
-                        )
+                    has_changes = (stats['uploads'] > 0 or stats['downloads'] > 0 or 
+                                   stats.get('remote_only_deleted', 0) > 0 or 
+                                   stats.get('local_only_deleted', 0) > 0)
+                    
+                    if has_changes:
+                        log_parts = []
+                        if stats['downloads'] > 0:
+                            log_parts.append(f"{stats['downloads']} downloads")
+                        if stats['uploads'] > 0:
+                            log_parts.append(f"{stats['uploads']} uploads")
+                        if stats.get('remote_only_deleted', 0) > 0:
+                            log_parts.append(f"{stats['remote_only_deleted']} remote deletions")
+                        if stats.get('local_only_deleted', 0) > 0:
+                            log_parts.append(f"{stats['local_only_deleted']} local deletions")
+                        if stats['conflicts'] > 0:
+                            log_parts.append(f"{stats['conflicts']} conflicts")
+                        
+                        self.logger.info(f"Sync: {', '.join(log_parts)}")
                     
                     last_sync = current_time
                 
@@ -152,10 +164,24 @@ class GenSparkSyncApp:
         # Initial sync
         self.logger.info("Performing initial sync...")
         stats = self.sync_engine.sync_once()
-        self.logger.info(
-            f"Initial sync complete: {stats['downloads']} downloads, "
-            f"{stats['uploads']} uploads, {stats['conflicts']} conflicts"
-        )
+        
+        # Build summary message
+        summary_parts = []
+        if stats['downloads'] > 0:
+            summary_parts.append(f"{stats['downloads']} downloads")
+        if stats['uploads'] > 0:
+            summary_parts.append(f"{stats['uploads']} uploads")
+        if stats.get('remote_only_deleted', 0) > 0:
+            summary_parts.append(f"{stats['remote_only_deleted']} remote deletions")
+        if stats.get('local_only_deleted', 0) > 0:
+            summary_parts.append(f"{stats['local_only_deleted']} local deletions")
+        if stats['conflicts'] > 0:
+            summary_parts.append(f"{stats['conflicts']} conflicts")
+        
+        if summary_parts:
+            self.logger.info(f"Initial sync complete: {', '.join(summary_parts)}")
+        else:
+            self.logger.info("Initial sync complete: No changes")
         
         # Start poller thread
         self.is_running = True
@@ -198,6 +224,10 @@ class GenSparkSyncApp:
             print(f"   Downloads: {stats['downloads']}")
             print(f"   Conflicts: {stats['conflicts']}")
             print(f"   Errors: {stats['errors']}")
+            if stats.get('remote_only_deleted', 0) > 0:
+                print(f"   Remote Deletions: {stats['remote_only_deleted']}")
+            if stats.get('local_only_deleted', 0) > 0:
+                print(f"   Local Deletions: {stats['local_only_deleted']}")
 
 
 def main():

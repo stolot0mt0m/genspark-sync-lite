@@ -36,10 +36,16 @@
 
 ### ⚠️ Conflict Detection & Sync Strategy
 - **True Conflicts:** Erkennt wenn Datei auf beiden Seiten geändert wurde
-- **Remote-Only Files:** Flexibles Handling mit Initial Sync Strategy
-  - **Local Priority:** Remote-only Dateien werden aus AI Drive gelöscht
-  - **Remote Priority:** Remote-only Dateien werden lokal heruntergeladen
-  - **Ask Mode:** Für jede remote-only Datei wird gefragt (Download/Delete/Skip)
+- **Bidirektionale Sync Strategy:** Flexibles Handling mit Initial Sync Strategy
+  - **Local Priority:** 
+    - Remote-only Dateien → Aus AI Drive gelöscht
+    - Local-only Dateien → Zu AI Drive hochgeladen
+  - **Remote Priority:** 
+    - Remote-only Dateien → Lokal heruntergeladen
+    - Local-only Dateien → Lokal gelöscht ⚠️
+  - **Ask Mode:** 
+    - Remote-only: Gefragt (Download/Delete/Skip)
+    - Local-only: Gefragt (Upload/Delete/Skip)
 - Fragt User welche Version behalten werden soll
 - Unterstützt: "Local behalten", "Remote behalten", "Skip"
 
@@ -146,16 +152,24 @@ Falls du den Fehler `403 Client Error: Forbidden` bekommst:
 
 5. **Initial Sync Strategy wählen:**
    ```
-   [L] Local priority - Remote-only Dateien werden gelöscht
-   [R] Remote priority - Remote-only Dateien werden heruntergeladen
-   [A] Ask - Für jede remote-only Datei wird gefragt (default)
+   [L] Local priority - Lokale Version ist führend
+   [R] Remote priority - Remote Version ist führend
+   [A] Ask - Für jede Differenz wird gefragt (default)
    ```
    
-   **Beispiel:**
-   - Du hast einen Ordner "ParentFolder" nur in der WebGUI, aber nicht lokal
-   - **Local Priority (L)**: Ordner wird aus AI Drive gelöscht
-   - **Remote Priority (R)**: Ordner wird lokal heruntergeladen
-   - **Ask (A)**: Du wirst für jeden Ordner/Datei einzeln gefragt
+   **Beispiele:**
+   
+   **Szenario 1: Ordner nur in WebGUI (remote-only)**
+   - Du hast "ParentFolder" nur in der WebGUI, nicht lokal
+   - **Local Priority (L)**: Ordner wird aus AI Drive **gelöscht** ❌
+   - **Remote Priority (R)**: Ordner wird lokal **heruntergeladen** ✅
+   - **Ask (A)**: Du wirst gefragt: Download / Delete / Skip
+   
+   **Szenario 2: Ordner nur lokal (local-only)**
+   - Du hast "MyFolder" lokal, aber er wurde aus WebGUI gelöscht
+   - **Local Priority (L)**: Ordner wird wieder **hochgeladen** ✅
+   - **Remote Priority (R)**: Ordner wird lokal **gelöscht** ❌
+   - **Ask (A)**: Du wirst gefragt: Upload / Delete / Skip
 
 ### Während des Betriebs
 
