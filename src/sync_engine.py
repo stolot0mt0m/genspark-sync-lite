@@ -89,36 +89,79 @@ class SyncEngine:
         return local_files
     
     def scan_remote_files(self) -> Dict[str, Dict[str, Any]]:
-        """Scan AI Drive and return file metadata"""
+        """Scan AI Drive and return file metadata (recursively including folders)"""
         remote_files = {}
         
+        # Step 1: Get root items
         items = self.api_client.list_files()
         if not items:
             return remote_files
         
+        # Step 2: Collect folders to scan
+        folders_to_scan = []
+        
         for item in items:
-            # Skip directories - we only sync files
             if item.get('type') == 'directory':
+                # Add folder to scan list
+                folders_to_scan.append(item)
                 continue
                 
             if item['type'] == 'file':
-                # Skip thumbnail files (they're generated, not real user files)
+                # Skip thumbnail files
                 if item['name'].startswith('thumb_') and item['name'].endswith('.jpg'):
                     continue
                 
-                # API returns full path like "/Github_Ready_Repository" or "/Investments/file.txt"
+                # Root-level file
                 file_path = item['path']
-                relative_path = file_path.lstrip('/')  # Remove leading slash for local path
+                relative_path = file_path.lstrip('/')
                 
                 remote_files[relative_path] = {
                     'path': relative_path,
-                    'file_path': file_path,  # Keep original path for download URL
+                    'file_path': file_path,
                     'id': item['id'],
                     'name': item['name'],
                     'size': item['size'],
                     'modified_time': item['modified_time'],
                     'mime_type': item.get('mime_type', '')
                 }
+        
+        # Step 3: Scan each folder for files
+        self.logger.info(f"Scanning {len(folders_to_scan)} folders for files...")
+        for folder in folders_to_scan:
+            folder_path = folder['path']
+            folder_name = folder['name']
+            
+            self.logger.debug(f"Scanning folder: {folder_name}")
+            
+            # Get files in this folder
+            folder_items = self.api_client.list_files(folder_path=folder_path)
+            if not folder_items:
+                continue
+            
+            for item in folder_items:
+                # Skip subdirectories for now (can add recursive later)
+                if item.get('type') == 'directory':
+                    continue
+                
+                if item['type'] == 'file':
+                    # Skip thumbnails
+                    if item['name'].startswith('thumb_') and item['name'].endswith('.jpg'):
+                        continue
+                    
+                    # File in folder - construct path
+                    file_path = item['path']
+                    # relative_path should be like "GitHub_Deployment/file.txt"
+                    relative_path = file_path.lstrip('/')
+                    
+                    remote_files[relative_path] = {
+                        'path': relative_path,
+                        'file_path': file_path,
+                        'id': item['id'],
+                        'name': item['name'],
+                        'size': item['size'],
+                        'modified_time': item['modified_time'],
+                        'mime_type': item.get('mime_type', '')
+                    }
         
         return remote_files
     

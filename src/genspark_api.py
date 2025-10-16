@@ -55,20 +55,29 @@ class GenSparkAPIClient:
             self.logger.error(f"Failed to load cookies: {e}")
             return False
     
-    def list_files(self, limit: int = 100) -> Optional[List[Dict[str, Any]]]:
+    def list_files(self, limit: int = 100, folder_path: str = None) -> Optional[List[Dict[str, Any]]]:
         """
         List all files and folders in AI Drive
         
         Args:
             limit: Maximum number of items to retrieve (default: 100)
+            folder_path: Optional folder path to list (e.g., "/GitHub_Deployment")
             
         Returns:
             List of file/folder dictionaries or None on error
         """
         try:
             # Discovered from Chrome DevTools:
-            # GET https://www.genspark.ai/api/aidrive/ls/files/?filter_type=all&sort_by=modified_desc&file_type=all
-            url = f"{self.API_BASE}/ls/files/"
+            # Root: GET /api/aidrive/ls/files/?filter_type=all&sort_by=modified_desc&file_type=all
+            # Folder: GET /api/aidrive/ls/files/{folder_name}/?filter_type=all&sort_by=modified_desc&file_type=all
+            
+            if folder_path:
+                # Remove leading slash for URL
+                folder_name = folder_path.lstrip('/')
+                url = f"{self.API_BASE}/ls/files/{folder_name}/"
+            else:
+                url = f"{self.API_BASE}/ls/files/"
+            
             params = {
                 "filter_type": "all",
                 "sort_by": "modified_desc",
@@ -82,7 +91,7 @@ class GenSparkAPIClient:
             data = response.json()
             items = data.get("items", [])
             
-            self.logger.info(f"Retrieved {len(items)} items from AI Drive")
+            self.logger.info(f"Retrieved {len(items)} items from AI Drive" + (f" (folder: {folder_path})" if folder_path else ""))
             return items
             
         except requests.exceptions.RequestException as e:
