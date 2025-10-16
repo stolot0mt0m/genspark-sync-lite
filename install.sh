@@ -171,8 +171,6 @@ check_command() {
 check_python() {
     print_step "Checking Python installation"
     
-    local python_cmd=""
-    
     # Try python3 first, then python
     for cmd in python3 python; do
         if check_command "${cmd}"; then
@@ -184,9 +182,8 @@ check_python() {
             
             if [[ "${major}" -ge "${REQUIRED_PYTHON_MAJOR}" ]] && \
                [[ "${minor}" -ge "${REQUIRED_PYTHON_MINOR}" ]]; then
-                python_cmd="${cmd}"
                 print_success "Python ${version} found (${cmd})"
-                echo "${python_cmd}"
+                echo "${cmd}"  # Output to stdout for capture
                 return 0
             fi
         fi
@@ -468,14 +465,12 @@ main() {
         needs_homebrew=true
     fi
     
-    # Check Python
+    # Check Python FIRST (before pip)
     python_cmd="$(check_python || true)"
     if [[ -z "${python_cmd}" ]]; then
         needs_python=true
-    fi
-    
-    # Check pip
-    if [[ -n "${python_cmd}" ]]; then
+    else
+        # Only check pip if we have Python
         if ! check_pip "${python_cmd}"; then
             needs_pip=true
         fi
