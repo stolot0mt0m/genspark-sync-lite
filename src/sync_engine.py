@@ -253,31 +253,35 @@ class SyncEngine:
             local = local_files[path]
             remote = remote_files[path]
             
-            # Compare by modified time and size
-            if local['modified_time'] != remote['modified_time'] or local['size'] != remote['size']:
-                # Check if we have state for this file
-                state = self.state.get(path, {})
-                state_mtime = state.get('modified_time', 0)
-                state_size = state.get('size', 0)
-                
-                # Determine what changed
-                local_changed = (local['modified_time'] > state_mtime or local['size'] != state_size)
-                remote_changed = (remote['modified_time'] > state_mtime or remote['size'] != state_size)
-                
-                # TRUE conflict: BOTH changed since last sync
-                if local_changed and remote_changed:
-                    conflicts.append({
-                        'path': path,
-                        'local': local,
-                        'remote': remote,
-                        'state': state
-                    })
-                # Local-only change: Upload will handle this
-                elif local_changed and not remote_changed:
-                    self.logger.debug(f"Local-only change detected: {path} (will be uploaded)")
-                # Remote-only change: Download will handle this
-                elif remote_changed and not local_changed:
-                    self.logger.debug(f"Remote-only change detected: {path} (will be downloaded)")
+            # Get state
+            state = self.state.get(path, {})
+            state_hash = state.get('quick_hash', '')
+            
+            # ROBUST: Compare by hash (content) instead of mtime
+            local_hash = local.get('hash', '')
+            
+            # Check if local file actually changed (by content)
+            local_changed = (local_hash != state_hash and local_hash != '')
+            
+            # For remote, we don't have hash - use size as fallback
+            # (Remote file would need to be downloaded to get hash)
+            state_size = state.get('size', 0)
+            remote_changed = (remote['size'] != state_size)
+            
+            # TRUE conflict: BOTH changed since last sync
+            if local_changed and remote_changed:
+                conflicts.append({
+                    'path': path,
+                    'local': local,
+                    'remote': remote,
+                    'state': state
+                })
+            # Local-only change: Upload will handle this
+            elif local_changed and not remote_changed:
+                self.logger.debug(f"Local content changed: {path} (hash: {state_hash[:8]} → {local_hash[:8]})")
+            # Remote-only change: Download will handle this
+            elif remote_changed and not local_changed:
+                self.logger.debug(f"Remote size changed: {path} (size: {state_size} → {remote['size']})")
         
         return conflicts
     
@@ -415,10 +419,9 @@ class SyncEngine:
                             remote['file_path'],
                             local_path
                         ):
-                            self.state[path] = {
-                                'modified_time': remote['modified_time'],
-                                'size': remote['size']
-                            }
+                            # Calculate hash of downloaded file
+                            downloaded_hash = self.get_file_hash(local_path) if local_path.exists() else ''
+                            self.update_file_state(path, remote['size'], remote['modified_time'], downloaded_hash)
                             self.stats['downloads'] += 1
                             print(f"✅ Downloaded: {path}")
                     finally:
@@ -458,10 +461,9 @@ class SyncEngine:
                         remote['file_path'],  # Full path like "/folder/file.txt"
                         local_path
                     ):
-                        self.state[path] = {
-                            'modified_time': remote['modified_time'],
-                            'size': remote['size']
-                        }
+                        # Calculate hash of downloaded file
+                        downloaded_hash = self.get_file_hash(local_path) if local_path.exists() else ''
+                        self.update_file_state(path, remote['size'], remote['modified_time'], downloaded_hash)
                         self.stats['downloads'] += 1
                 finally:
                     # Remove from downloading set after a delay (file watcher needs time)
@@ -553,10 +555,8 @@ class SyncEngine:
                     
                     try:
                         if self.api_client.upload_file(local_path, path):
-                            self.state[path] = {
-                                'modified_time': local['modified_time'],
-                                'size': local['size']
-                            }
+                            # Update state with hash
+                            self.update_file_state(path, local['size'], local['modified_time'], local['hash'])
                             self.stats['uploads'] += 1
                             print(f"✅ Uploaded: {path}")
                     finally:
@@ -603,10 +603,8 @@ class SyncEngine:
                     # Use full path for files in folders (e.g., "TestOrdner/file.txt")
                     # API expects: /api/aidrive/get_upload_url/files/TestOrdner/file.txt
                     if self.api_client.upload_file(local_path, path):
-                        self.state[path] = {
-                            'modified_time': local['modified_time'],
-                            'size': local['size']
-                        }
+                        # Update state with hash
+                        self.update_file_state(path, local['size'], local['modified_time'], local['hash'])
                         self.stats['uploads'] += 1
                 finally:
                     # Always remove from uploading set
@@ -628,9 +626,15 @@ class SyncEngine:
             state_mtime = state.get('modified_time', 0)
             state_size = state.get('size', 0)
             
-            # Check if local changed (and remote didn't)
-            local_changed = (local['modified_time'] > state_mtime or local['size'] != state_size)
-            remote_changed = (remote['modified_time'] > state_mtime or remote['size'] != state_size)
+            # ROBUST: Use hash for local change detection (content-based)
+            local_hash = local.get('hash', '')
+            state_hash = state.get('quick_hash', '')
+            
+            # Local changed if content hash differs
+            local_changed = (local_hash != state_hash and local_hash != '')
+            
+            # Remote changed if size differs (we don't have remote hash)
+            remote_changed = (remote['size'] != state_size)
             
             if local_changed and not remote_changed:
                 # Upload modified local file
@@ -640,18 +644,14 @@ class SyncEngine:
                 # Use update_file if we have remote info (delete + upload)
                 if hasattr(self.api_client, 'update_file'):
                     if self.api_client.update_file(local_path, path, remote.get('id'), remote.get('file_path')):
-                        self.state[path] = {
-                            'modified_time': local['modified_time'],
-                            'size': local['size']
-                        }
+                        # Update state with hash
+                        self.update_file_state(path, local['size'], local['modified_time'], local['hash'])
                         self.stats['uploads'] += 1
                 else:
                     # Fallback to regular upload
                     if self.api_client.upload_file(local_path, path):
-                        self.state[path] = {
-                            'modified_time': local['modified_time'],
-                            'size': local['size']
-                        }
+                        # Update state with hash
+                        self.update_file_state(path, local['size'], local['modified_time'], local['hash'])
                         self.stats['uploads'] += 1
             
             elif remote_changed and not local_changed:
@@ -668,18 +668,15 @@ class SyncEngine:
                     remote['file_path'],
                     local_path
                 ):
-                    self.state[path] = {
-                        'modified_time': remote['modified_time'],
-                        'size': remote['size']
-                    }
+                    # Calculate hash of downloaded file
+                    downloaded_hash = self.get_file_hash(local_path) if local_path.exists() else ''
+                    # Update state with hash
+                    self.update_file_state(path, remote['size'], remote['modified_time'], downloaded_hash)
                     self.stats['downloads'] += 1
             
             else:
-                # No changes or already synced
-                self.state[path] = {
-                    'modified_time': local['modified_time'],
-                    'size': local['size']
-                }
+                # No changes or already synced - update state to keep hash current
+                self.update_file_state(path, local['size'], local['modified_time'], local.get('hash', ''))
         
         self.save_state()
         

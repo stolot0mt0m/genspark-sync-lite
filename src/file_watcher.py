@@ -107,7 +107,7 @@ class LocalFileWatcher(FileSystemEventHandler):
         if not self._should_process_event('created', path):
             return
         
-        self.logger.info(f"File created: {path.name}")
+        self.logger.debug(f"File created: {path.name}")
         try:
             self.on_file_created(event)
         except Exception as e:
@@ -126,7 +126,7 @@ class LocalFileWatcher(FileSystemEventHandler):
         if not self._should_process_event('modified', path):
             return
         
-        self.logger.info(f"File modified: {path.name}")
+        self.logger.debug(f"File modified: {path.name}")
         try:
             self.on_file_modified(event)
         except Exception as e:
@@ -144,9 +144,9 @@ class LocalFileWatcher(FileSystemEventHandler):
         
         # Handle both files and directories
         if event.is_directory:
-            self.logger.info(f"Folder deleted: {path.name}")
+            self.logger.debug(f"Folder deleted: {path.name}")
         else:
-            self.logger.info(f"File deleted: {path.name}")
+            self.logger.debug(f"File deleted: {path.name}")
         
         try:
             self.on_file_deleted(event)
