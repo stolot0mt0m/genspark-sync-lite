@@ -162,10 +162,10 @@ class GenSparkAPIClient:
         """
         try:
             # Discovered from Chrome DevTools:
-            # GET /api/aidrive/wget_upload_url/files/{filename}
+            # GET /api/aidrive/get_upload_url/files/{filename}
             from urllib.parse import quote
             encoded_filename = quote(filename)
-            url = f"{self.API_BASE}/wget_upload_url/files/{encoded_filename}"
+            url = f"{self.API_BASE}/get_upload_url/files/{encoded_filename}"
             
             self.logger.debug(f"Requesting upload URL for: {filename}")
             response = self.session.get(url, timeout=10)
