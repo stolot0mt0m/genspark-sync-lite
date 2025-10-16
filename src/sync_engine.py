@@ -479,18 +479,60 @@ class SyncEngine:
                     self.uploading_files.discard(relative_path)
         
         elif event_type == 'deleted':
-            # Delete from remote (if exists)
+            # Check if it's a directory deletion
+            # If path doesn't exist locally, could be file or folder
+            
+            # First, check if it's a file in remote
             remote_files = self.scan_remote_files()
             if relative_path in remote_files:
+                # It's a file - delete it
                 remote = remote_files[relative_path]
-                self.logger.info(f"Deleting from remote: {relative_path}")
-                # Use path-based delete (not ID!)
+                self.logger.info(f"Deleting file from remote: {relative_path}")
                 self.api_client.delete_file('', remote['name'], remote['file_path'])
-            
-            # Remove from state
-            if relative_path in self.state:
-                del self.state[relative_path]
-                self.save_state()
+                
+                # Remove from state
+                if relative_path in self.state:
+                    del self.state[relative_path]
+                    self.save_state()
+            else:
+                # Might be a folder deletion - find all files in that folder
+                folder_prefix = relative_path + '/'
+                files_in_folder = []
+                
+                # Find files in state that start with folder path
+                for file_path in list(self.state.keys()):
+                    if file_path.startswith(folder_prefix):
+                        files_in_folder.append(file_path)
+                
+                # Also check remote for files in this folder
+                for file_path in remote_files.keys():
+                    if file_path.startswith(folder_prefix) and file_path not in files_in_folder:
+                        files_in_folder.append(file_path)
+                
+                if files_in_folder:
+                    self.logger.info(f"Folder deleted locally: {relative_path} (contains {len(files_in_folder)} files)")
+                    
+                    # Delete all files in the folder from remote
+                    for file_path in files_in_folder:
+                        if file_path in remote_files:
+                            remote = remote_files[file_path]
+                            self.logger.info(f"  Deleting: {file_path}")
+                            self.api_client.delete_file('', remote['name'], remote['file_path'])
+                        
+                        # Remove from state
+                        if file_path in self.state:
+                            del self.state[file_path]
+                    
+                    self.save_state()
+                    self.logger.info(f"✅ Folder deletion complete: {relative_path}")
+                else:
+                    # File/folder not found anywhere - might have been already deleted
+                    self.logger.debug(f"Delete event for unknown path: {relative_path}")
+                    
+                    # Still remove from state if exists
+                    if relative_path in self.state:
+                        del self.state[relative_path]
+                        self.save_state()
 
 
 # Example usage

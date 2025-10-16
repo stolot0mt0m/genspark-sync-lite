@@ -133,10 +133,7 @@ class LocalFileWatcher(FileSystemEventHandler):
             self.logger.error(f"Error handling modified event: {e}")
     
     def on_deleted(self, event: FileSystemEvent):
-        """Handle file deletion"""
-        if event.is_directory:
-            return
-        
+        """Handle file/folder deletion"""
         path = Path(event.src_path)
         
         if self.should_ignore(path):
@@ -145,7 +142,12 @@ class LocalFileWatcher(FileSystemEventHandler):
         if not self._should_process_event('deleted', path):
             return
         
-        self.logger.info(f"File deleted: {path.name}")
+        # Handle both files and directories
+        if event.is_directory:
+            self.logger.info(f"Folder deleted: {path.name}")
+        else:
+            self.logger.info(f"File deleted: {path.name}")
+        
         try:
             self.on_file_deleted(event)
         except Exception as e:
