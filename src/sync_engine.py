@@ -8,6 +8,7 @@ import logging
 import json
 import time
 import hashlib
+import threading
 from pathlib import Path
 from typing import Dict, Set, Optional, List, Any
 from datetime import datetime
@@ -32,6 +33,9 @@ class SyncEngine:
         
         # Track files currently being uploaded (to avoid duplicate uploads)
         self.uploading_files: Set[str] = set()
+        
+        # Thread lock for upload tracking (prevent race conditions)
+        self.upload_lock = threading.Lock()
         
         # Sync statistics
         self.stats = {
@@ -318,16 +322,18 @@ class SyncEngine:
         local_only = set(local_files.keys()) - set(remote_files.keys())
         self.logger.info(f"Files to upload: {len(local_only)}")
         for path in local_only:
-            # Skip if already uploading
-            if path in self.uploading_files:
-                self.logger.debug(f"Skipping {path} (upload already in progress)")
-                continue
-            
             local = local_files[path]
             local_path = self.local_root / path
             
-            # Mark as uploading
-            self.uploading_files.add(path)
+            # Use lock to prevent concurrent uploads
+            with self.upload_lock:
+                # Skip if already uploading
+                if path in self.uploading_files:
+                    self.logger.debug(f"Skipping {path} (upload already in progress)")
+                    continue
+                
+                # Mark as uploading
+                self.uploading_files.add(path)
             
             try:
                 self.logger.info(f"Uploading new file: {path}")
@@ -342,7 +348,8 @@ class SyncEngine:
                     self.stats['uploads'] += 1
             finally:
                 # Always remove from uploading set
-                self.uploading_files.discard(path)
+                with self.upload_lock:
+                    self.uploading_files.discard(path)
         
         # Update state for unchanged files
         common_files = set(local_files.keys()) & set(remote_files.keys())
@@ -377,14 +384,16 @@ class SyncEngine:
             self.logger.debug(f"Skipping upload for {relative_path} (currently downloading)")
             return
         
-        # Skip if we're already uploading this file
-        if relative_path in self.uploading_files:
-            self.logger.debug(f"Skipping duplicate upload for {relative_path} (upload already in progress)")
-            return
-        
         if event_type in ['created', 'modified']:
-            # Mark file as being uploaded
-            self.uploading_files.add(relative_path)
+            # Use lock to prevent concurrent uploads of the same file
+            with self.upload_lock:
+                # Skip if we're already uploading this file
+                if relative_path in self.uploading_files:
+                    self.logger.debug(f"Skipping duplicate upload for {relative_path} (upload already in progress)")
+                    return
+                
+                # Mark file as being uploaded
+                self.uploading_files.add(relative_path)
             
             try:
                 # Upload file with full path for folders support
@@ -398,7 +407,8 @@ class SyncEngine:
                     self.stats['uploads'] += 1
             finally:
                 # Always remove from uploading set
-                self.uploading_files.discard(relative_path)
+                with self.upload_lock:
+                    self.uploading_files.discard(relative_path)
         
         elif event_type == 'deleted':
             # Delete from remote (if exists)

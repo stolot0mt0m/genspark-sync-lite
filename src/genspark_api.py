@@ -307,7 +307,18 @@ class GenSparkAPIClient:
             self.logger.debug(f"URL: {url}")
             response = self.session.post(url, json=payload, timeout=10)
             
-            # Log response status
+            # Check for "Entry already exists" (file was already confirmed, treat as success)
+            if response.status_code == 400:
+                try:
+                    error_data = response.json()
+                    error_detail = error_data.get('detail', '')
+                    if 'already exists' in str(error_detail).lower():
+                        self.logger.info(f"File already confirmed in AI Drive: {filename} (treating as success)")
+                        return True
+                except:
+                    pass
+            
+            # Log response status for other errors
             if response.status_code != 200:
                 try:
                     error_data = response.json()
