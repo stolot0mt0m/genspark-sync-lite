@@ -16,7 +16,9 @@ class GenSparkAPIClient:
     
     BASE_URL = "https://www.genspark.ai"
     AI_DRIVE_URL = f"{BASE_URL}/aidrive/files/"  # Web UI for AI Drive
-    API_BASE = f"{BASE_URL}/api/side/wget_upload_url"
+    # Note: The correct API endpoint needs to be discovered via browser DevTools
+    # Try variations: /api/files, /aidrive/api/files, /api/drive/files
+    API_BASE = f"{BASE_URL}/api/aidrive"  # Updated based on 404 error
     
     def __init__(self):
         self.session = requests.Session()
