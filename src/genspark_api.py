@@ -173,14 +173,17 @@ class GenSparkAPIClient:
             
             data = response.json()
             
-            # Response should contain upload_url
-            upload_url = data.get("upload_url")
-            if upload_url:
-                self.logger.info(f"Got upload URL for: {filename}")
-                return upload_url
-            else:
-                self.logger.error(f"No upload_url in response: {data}")
-                return None
+            # Response format: {"status": "success", "data": {"upload_url": "...", "token": "..."}}
+            if data.get("status") == "success":
+                upload_data = data.get("data", {})
+                upload_url = upload_data.get("upload_url")
+                
+                if upload_url:
+                    self.logger.info(f"Got upload URL for: {filename}")
+                    return upload_url
+            
+            self.logger.error(f"No upload_url in response: {data}")
+            return None
                 
         except Exception as e:
             self.logger.error(f"Failed to request upload URL: {e}")
