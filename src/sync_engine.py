@@ -320,7 +320,9 @@ class SyncEngine:
             
             self.logger.info(f"Uploading new file: {path}")
             
-            if self.api_client.upload_file(local_path, Path(path).name):
+            # Use full path for files in folders (e.g., "TestOrdner/file.txt")
+            # API expects: /api/aidrive/get_upload_url/files/TestOrdner/file.txt
+            if self.api_client.upload_file(local_path, path):
                 self.state[path] = {
                     'modified_time': local['modified_time'],
                     'size': local['size']
@@ -360,9 +362,9 @@ class SyncEngine:
             return
         
         if event_type in ['created', 'modified']:
-            # Upload file
+            # Upload file with full path for folders support
             self.logger.info(f"Uploading: {relative_path}")
-            if self.api_client.upload_file(path, path.name):
+            if self.api_client.upload_file(path, relative_path):
                 self.state[relative_path] = {
                     'modified_time': int(path.stat().st_mtime),
                     'size': path.stat().st_size

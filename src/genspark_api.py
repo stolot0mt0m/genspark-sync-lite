@@ -199,6 +199,38 @@ class GenSparkAPIClient:
             self.logger.error(f"Failed to request upload URL: {e}")
             return None
     
+    def create_folder(self, folder_path: str) -> bool:
+        """
+        Create a folder in AI Drive
+        
+        Args:
+            folder_path: Folder path (e.g., "TestOrdner" or "Parent/Child")
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Discovered from Chrome DevTools:
+            # POST /api/aidrive/mkdir/files/{folder_name}/
+            from urllib.parse import quote
+            encoded_path = quote(folder_path)
+            url = f"{self.API_BASE}/mkdir/files/{encoded_path}/"
+            
+            self.logger.info(f"Creating folder: {folder_path}")
+            response = self.session.post(url, timeout=10)
+            response.raise_for_status()
+            
+            self.logger.info(f"Folder created: {folder_path}")
+            return True
+                
+        except Exception as e:
+            # Folder might already exist
+            if "409" in str(e) or "already exists" in str(e).lower():
+                self.logger.debug(f"Folder already exists: {folder_path}")
+                return True
+            self.logger.error(f"Failed to create folder: {e}")
+            return False
+    
     def confirm_upload(self, filename: str, token: str) -> bool:
         """
         Confirm upload to GenSpark (Step 3 of 3-step upload)
@@ -239,18 +271,28 @@ class GenSparkAPIClient:
     def upload_file(self, local_path: Path, remote_filename: str) -> bool:
         """
         Upload a file to AI Drive using 3-step process:
-        1. GET upload URL from GenSpark
-        2. PUT file to Azure Blob Storage
-        3. POST confirm to GenSpark
+        1. Create folder if needed (for files in folders)
+        2. GET upload URL from GenSpark
+        3. PUT file to Azure Blob Storage
+        4. POST confirm to GenSpark
         
         Args:
             local_path: Local file path
-            remote_filename: Desired filename in AI Drive
+            remote_filename: Desired filename or path in AI Drive (e.g., "file.txt" or "Folder/file.txt")
             
         Returns:
             True if successful, False otherwise
         """
         try:
+            # Step 0: Create folder if file is in a folder
+            if '/' in remote_filename:
+                # Extract folder path (everything before last /)
+                folder_path = '/'.join(remote_filename.split('/')[:-1])
+                if not self.create_folder(folder_path):
+                    self.logger.error(f"Failed to create folder: {folder_path}")
+                    # Continue anyway - folder might already exist
+            
+            # Continue with normal upload process
             # Step 1: Request upload URL and token from GenSpark
             upload_result = self.request_upload_url(remote_filename)
             if not upload_result:
