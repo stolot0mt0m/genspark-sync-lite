@@ -1,0 +1,18 @@
+# GenSpark Sync Lite - Minimal Dependencies
+# Python 3.11+
+
+# HTTP Client
+requests>=2.31.0
+
+# File System Monitoring
+watchdog>=3.0.0
+
+# Cookie Extraction
+browser-cookie3>=0.19.1
+
+# Configuration Management
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# Utilities
+python-dateutil>=2.8.2
