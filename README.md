@@ -34,20 +34,14 @@
 - **Local → Cloud:** Watchdog erkennt Änderungen sofort → Upload
 - **Cloud → Local:** Polling alle 30s → Download neuer Dateien
 
-### ⚠️ Conflict Detection & Sync Strategy
+### ⚠️ Conflict Detection & Local Priority
+- **Local Priority (fest):** Lokaler Ordner ist immer die Source of Truth
+  - Remote-only Dateien → **Aus AI Drive gelöscht**
+  - Local-only Dateien → **Zu AI Drive hochgeladen**
+  - Lokale Änderungen → **Immer hochgeladen**
 - **True Conflicts:** Erkennt wenn Datei auf beiden Seiten geändert wurde
-- **Bidirektionale Sync Strategy:** Flexibles Handling mit Initial Sync Strategy
-  - **Local Priority:** 
-    - Remote-only Dateien → Aus AI Drive gelöscht
-    - Local-only Dateien → Zu AI Drive hochgeladen
-  - **Remote Priority:** 
-    - Remote-only Dateien → Lokal heruntergeladen
-    - Local-only Dateien → Lokal gelöscht ⚠️
-  - **Ask Mode:** 
-    - Remote-only: Gefragt (Download/Delete/Skip)
-    - Local-only: Gefragt (Upload/Delete/Skip)
-- Fragt User welche Version behalten werden soll
-- Unterstützt: "Local behalten", "Remote behalten", "Skip"
+  - Fragt User welche Version behalten werden soll
+  - Unterstützt: "Local behalten", "Remote behalten", "Skip"
 
 ### 📊 State Management
 - `.genspark_sync_state.json` → Tracking aller Dateien
@@ -150,26 +144,23 @@ Falls du den Fehler `403 Client Error: Forbidden` bekommst:
    Empfohlen: 30-60 Sekunden
    ```
 
-5. **Initial Sync Strategy wählen:**
+5. **Sync Strategy:**
    ```
-   [L] Local priority - Lokale Version ist führend
-   [R] Remote priority - Remote Version ist führend (default)
-   [A] Ask - Für jede Differenz wird gefragt
+   ✅ LOCAL PRIORITY (fest eingestellt)
+   Lokaler Ordner ist die Source of Truth
    ```
    
-   **Beispiele:**
+   **Verhalten:**
    
    **Szenario 1: Ordner nur in WebGUI (remote-only)**
    - Du hast "ParentFolder" nur in der WebGUI, nicht lokal
-   - **Local Priority (L)**: Ordner wird aus AI Drive **gelöscht** ❌
-   - **Remote Priority (R)**: Ordner wird lokal **heruntergeladen** ✅
-   - **Ask (A)**: Du wirst gefragt: Download / Delete / Skip
+   - **Aktion**: Ordner wird aus AI Drive **gelöscht** ❌
+   - **Grund**: Lokaler Ordner hat Vorrang
    
    **Szenario 2: Ordner nur lokal (local-only)**
-   - Du hast "MyFolder" lokal, aber er wurde aus WebGUI gelöscht
-   - **Local Priority (L)**: Ordner wird wieder **hochgeladen** ✅
-   - **Remote Priority (R)**: Ordner wird lokal **gelöscht** ❌
-   - **Ask (A)**: Du wirst gefragt: Upload / Delete / Skip
+   - Du hast "MyFolder" lokal, aber nicht in WebGUI
+   - **Aktion**: Ordner wird zu AI Drive **hochgeladen** ✅
+   - **Grund**: Lokaler Ordner ist führend
 
 ### Während des Betriebs
 
@@ -353,10 +344,10 @@ Choose action [D/X/S]:
 - ✅ **Conflict detection** - Detects true conflicts (both sides changed)
 - ✅ **Folder deletion** - Deletes all files in folder when folder is deleted locally
 - ✅ **Path-based deletion** - Uses correct DELETE endpoint with file paths
-- ✅ **Sync Strategy** - Flexible handling of remote-only files/folders
-  - **Local Priority**: Deletes remote-only items from AI Drive
-  - **Remote Priority**: Downloads remote-only items to local
-  - **Ask Mode**: Prompts user for each remote-only item
+- ✅ **Local Priority (fest)** - Lokaler Ordner ist Source of Truth
+  - Remote-only items → Aus AI Drive gelöscht
+  - Local-only items → Zu AI Drive hochgeladen
+  - Keine Konfiguration nötig, immer lokal-führend
 
 ### 🔧 In Progress
 - 🔧 **Testing** - Comprehensive testing of all features with real-world scenarios
