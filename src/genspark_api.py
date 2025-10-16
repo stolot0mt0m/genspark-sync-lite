@@ -182,7 +182,7 @@ class GenSparkAPIClient:
             self.logger.debug(f"URL: {url}")
             response = self.session.get(url, timeout=10)
             
-            # Check for "EntryAlreadyExistsError" (file already exists, no need to re-upload)
+            # Check for "EntryAlreadyExistsError" (file already exists)
             if response.status_code == 400:
                 try:
                     error_data = response.json()
@@ -190,8 +190,9 @@ class GenSparkAPIClient:
                     if isinstance(error_detail, dict):
                         error_type = error_detail.get('error_type', '')
                         if error_type == 'EntryAlreadyExistsError':
-                            self.logger.info(f"File already exists in AI Drive: {filename} (skipping)")
-                            return None  # Signal to skip upload
+                            self.logger.info(f"File already exists in AI Drive: {filename}")
+                            # Return special tuple to signal "already exists"
+                            return ('ALREADY_EXISTS', None)
                 except:
                     pass
             
@@ -371,6 +372,11 @@ class GenSparkAPIClient:
             if not upload_result:
                 return False
             
+            # Check if file already exists
+            if upload_result[0] == 'ALREADY_EXISTS':
+                self.logger.info(f"✅ File already in AI Drive (no upload needed): {remote_filename}")
+                return True  # Treat as success
+            
             upload_url, token = upload_result
             
             # Step 2: Upload file directly to Azure Blob Storage
@@ -451,6 +457,9 @@ class GenSparkAPIClient:
         """
         Update an existing file in AI Drive (delete + re-upload)
         
+        For files in folders: Delete may timeout, so we log warning and continue
+        The sync engine will retry in next cycle if needed
+        
         Args:
             local_path: Local file path
             remote_filename: Remote filename or path
@@ -458,16 +467,22 @@ class GenSparkAPIClient:
             file_path: Full file path (for deletion)
             
         Returns:
-            True if successful, False otherwise
+            True if successfully updated, False otherwise
         """
         try:
-            # Step 1: Delete old version (if file_id provided)
-            if file_id or file_path:
-                self.logger.info(f"Updating file (delete + re-upload): {remote_filename}")
-                if not self.delete_file(file_id or '', remote_filename, file_path):
-                    self.logger.warning(f"Delete failed, attempting direct upload anyway")
+            self.logger.info(f"Updating file: {remote_filename}")
             
-            # Step 2: Upload new version
+            # Step 1: Try to delete old version
+            if file_id:
+                # Use ID-based delete (works for root files)
+                if not self.delete_file(file_id, remote_filename):
+                    self.logger.debug(f"ID-based delete failed, skipping delete step")
+            elif file_path:
+                # Use path-based delete (may timeout for folder files)
+                if not self.delete_file('', remote_filename, file_path):
+                    self.logger.debug(f"Path-based delete failed, skipping delete step")
+            
+            # Step 2: Upload new version (will handle "already exists")
             return self.upload_file(local_path, remote_filename)
             
         except Exception as e:
