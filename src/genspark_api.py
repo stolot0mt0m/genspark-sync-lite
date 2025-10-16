@@ -414,20 +414,27 @@ class GenSparkAPIClient:
             self.logger.error(f"Failed to upload {remote_filename}: {e}")
             return False
     
-    def delete_file(self, file_id: str, filename: str) -> bool:
+    def delete_file(self, file_id: str, filename: str, file_path: str = None) -> bool:
         """
         Delete a file from AI Drive
         
         Args:
             file_id: Unique file ID
             filename: Filename
+            file_path: Full file path (e.g., "/folder/file.txt")
             
         Returns:
             True if successful, False otherwise
         """
         try:
-            # Delete endpoint (needs verification)
-            url = f"{self.API_BASE}/files/{file_id}"
+            # Use path-based delete if available, otherwise use ID
+            if file_path:
+                from urllib.parse import quote
+                clean_path = file_path.lstrip('/')
+                encoded_path = quote(clean_path, safe='/')
+                url = f"{self.API_BASE}/delete/files/{encoded_path}"
+            else:
+                url = f"{self.API_BASE}/files/{file_id}"
             
             self.logger.info(f"Deleting: {filename}")
             response = self.session.delete(url, timeout=10)
@@ -438,6 +445,33 @@ class GenSparkAPIClient:
             
         except Exception as e:
             self.logger.error(f"Failed to delete {filename}: {e}")
+            return False
+    
+    def update_file(self, local_path: Path, remote_filename: str, file_id: str = None, file_path: str = None) -> bool:
+        """
+        Update an existing file in AI Drive (delete + re-upload)
+        
+        Args:
+            local_path: Local file path
+            remote_filename: Remote filename or path
+            file_id: File ID (for deletion)
+            file_path: Full file path (for deletion)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Step 1: Delete old version (if file_id provided)
+            if file_id or file_path:
+                self.logger.info(f"Updating file (delete + re-upload): {remote_filename}")
+                if not self.delete_file(file_id or '', remote_filename, file_path):
+                    self.logger.warning(f"Delete failed, attempting direct upload anyway")
+            
+            # Step 2: Upload new version
+            return self.upload_file(local_path, remote_filename)
+            
+        except Exception as e:
+            self.logger.error(f"Failed to update {remote_filename}: {e}")
             return False
     
     def test_connection(self) -> bool:

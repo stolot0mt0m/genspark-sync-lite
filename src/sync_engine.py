@@ -208,16 +208,26 @@ class SyncEngine:
                 # Check if we have state for this file
                 state = self.state.get(path, {})
                 state_mtime = state.get('modified_time', 0)
+                state_size = state.get('size', 0)
                 
-                # Both changed since last sync
-                if (local['modified_time'] > state_mtime and 
-                    remote['modified_time'] > state_mtime):
+                # Determine what changed
+                local_changed = (local['modified_time'] > state_mtime or local['size'] != state_size)
+                remote_changed = (remote['modified_time'] > state_mtime or remote['size'] != state_size)
+                
+                # TRUE conflict: BOTH changed since last sync
+                if local_changed and remote_changed:
                     conflicts.append({
                         'path': path,
                         'local': local,
                         'remote': remote,
                         'state': state
                     })
+                # Local-only change: Upload will handle this
+                elif local_changed and not remote_changed:
+                    self.logger.debug(f"Local-only change detected: {path} (will be uploaded)")
+                # Remote-only change: Download will handle this
+                elif remote_changed and not local_changed:
+                    self.logger.debug(f"Remote-only change detected: {path} (will be downloaded)")
         
         return conflicts
     
@@ -351,11 +361,69 @@ class SyncEngine:
                 with self.upload_lock:
                     self.uploading_files.discard(path)
         
-        # Update state for unchanged files
+        # Handle modified files (no conflicts)
         common_files = set(local_files.keys()) & set(remote_files.keys())
+        conflict_paths = {c['path'] for c in conflicts}
+        
         for path in common_files:
-            if path not in conflicts:
-                local = local_files[path]
+            # Skip conflicts (already logged above)
+            if path in conflict_paths:
+                continue
+            
+            local = local_files[path]
+            remote = remote_files[path]
+            state = self.state.get(path, {})
+            state_mtime = state.get('modified_time', 0)
+            state_size = state.get('size', 0)
+            
+            # Check if local changed (and remote didn't)
+            local_changed = (local['modified_time'] > state_mtime or local['size'] != state_size)
+            remote_changed = (remote['modified_time'] > state_mtime or remote['size'] != state_size)
+            
+            if local_changed and not remote_changed:
+                # Upload modified local file
+                self.logger.info(f"Uploading modified file: {path}")
+                local_path = self.local_root / path
+                
+                # Use update_file if we have remote info (delete + upload)
+                if hasattr(self.api_client, 'update_file'):
+                    if self.api_client.update_file(local_path, path, remote.get('id'), remote.get('file_path')):
+                        self.state[path] = {
+                            'modified_time': local['modified_time'],
+                            'size': local['size']
+                        }
+                        self.stats['uploads'] += 1
+                else:
+                    # Fallback to regular upload
+                    if self.api_client.upload_file(local_path, path):
+                        self.state[path] = {
+                            'modified_time': local['modified_time'],
+                            'size': local['size']
+                        }
+                        self.stats['uploads'] += 1
+            
+            elif remote_changed and not local_changed:
+                # Download modified remote file
+                self.logger.info(f"Downloading modified file: {path}")
+                local_path = self.local_root / path
+                
+                # Mark as downloading
+                self.downloading_files.add(path)
+                
+                if self.api_client.download_file(
+                    remote['id'],
+                    remote['name'],
+                    remote['file_path'],
+                    local_path
+                ):
+                    self.state[path] = {
+                        'modified_time': remote['modified_time'],
+                        'size': remote['size']
+                    }
+                    self.stats['downloads'] += 1
+            
+            else:
+                # No changes or already synced
                 self.state[path] = {
                     'modified_time': local['modified_time'],
                     'size': local['size']
