@@ -737,17 +737,39 @@ class SyncEngine:
                     self.logger.debug(f"File no longer exists, skipping upload: {relative_path}")
                     return
                 
-                # Upload file with full path for folders support
-                self.logger.debug(f"Uploading: {relative_path}")
-                if self.api_client.upload_file(path, relative_path):
-                    # Double-check file exists before getting stats (paranoid check)
-                    if path.exists():
-                        stat = path.stat()
-                        quick_hash = self.get_file_hash(path)
-                        self.update_file_state(relative_path, stat.st_size, int(stat.st_mtime), quick_hash)
-                        self.stats['uploads'] += 1
-                    else:
-                        self.logger.debug(f"File disappeared after upload: {relative_path}")
+                # Check if file already exists remotely
+                remote_files = self.scan_remote_files()
+                file_exists_remotely = relative_path in remote_files
+                
+                if file_exists_remotely:
+                    # File exists remotely → Use update_file (delete + upload)
+                    self.logger.debug(f"Updating existing file: {relative_path}")
+                    remote = remote_files[relative_path]
+                    
+                    if self.api_client.update_file(
+                        path, 
+                        relative_path,
+                        remote.get('id'),
+                        remote.get('file_path')
+                    ):
+                        # Update state with new hash
+                        if path.exists():
+                            stat = path.stat()
+                            quick_hash = self.get_file_hash(path)
+                            self.update_file_state(relative_path, stat.st_size, int(stat.st_mtime), quick_hash)
+                            self.stats['uploads'] += 1
+                else:
+                    # New file → Regular upload
+                    self.logger.debug(f"Uploading new file: {relative_path}")
+                    if self.api_client.upload_file(path, relative_path):
+                        # Update state with hash
+                        if path.exists():
+                            stat = path.stat()
+                            quick_hash = self.get_file_hash(path)
+                            self.update_file_state(relative_path, stat.st_size, int(stat.st_mtime), quick_hash)
+                            self.stats['uploads'] += 1
+                        else:
+                            self.logger.debug(f"File disappeared after upload: {relative_path}")
             except FileNotFoundError:
                 # File was deleted during upload process (race condition)
                 self.logger.debug(f"File deleted during upload (race condition): {relative_path}")
