@@ -206,18 +206,19 @@ class GenSparkAPIClient:
             encoded_filename = quote(filename)
             url = f"{self.API_BASE}/confirm_upload/files/{encoded_filename}"
             
-            self.logger.debug(f"Confirming upload for: {filename}")
-            self.logger.debug(f"Confirm URL: {url}")
+            self.logger.info(f"Confirming upload for: {filename}")
+            self.logger.info(f"Confirm URL: {url}")
             
-            response = self.session.post(url, timeout=10)
+            # Try with empty JSON body (some APIs require this)
+            response = self.session.post(url, json={}, timeout=10)
             
             # Log response for debugging
-            self.logger.debug(f"Confirm response status: {response.status_code}")
+            self.logger.info(f"Confirm response status: {response.status_code}")
             try:
                 response_data = response.json()
-                self.logger.debug(f"Confirm response: {response_data}")
+                self.logger.info(f"Confirm response: {response_data}")
             except:
-                self.logger.debug(f"Confirm response text: {response.text[:500]}")
+                self.logger.info(f"Confirm response text: {response.text[:500]}")
             
             response.raise_for_status()
             
