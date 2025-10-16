@@ -16,9 +16,7 @@ class GenSparkAPIClient:
     
     BASE_URL = "https://www.genspark.ai"
     AI_DRIVE_URL = f"{BASE_URL}/aidrive/files/"  # Web UI for AI Drive
-    # Note: The correct API endpoint needs to be discovered via browser DevTools
-    # Try variations: /api/files, /aidrive/api/files, /api/drive/files
-    API_BASE = f"{BASE_URL}/api/aidrive"  # Updated based on 404 error
+    API_BASE = f"{BASE_URL}/aidrive/files/api"  # Discovered via endpoint discovery tool
     
     def __init__(self):
         self.session = requests.Session()
@@ -69,7 +67,7 @@ class GenSparkAPIClient:
             List of file dictionaries or None on error
         """
         try:
-            url = f"{self.API_BASE}/files"
+            url = f"{self.API_BASE}/list"
             params = {
                 "filter_type": filter_type,
                 "sort_by": sort_by,
@@ -80,11 +78,18 @@ class GenSparkAPIClient:
             response = self.session.get(url, params=params, timeout=10)
             response.raise_for_status()
             
-            data = response.json()
-            items = data.get("items", [])
-            
-            self.logger.info(f"Retrieved {len(items)} items from AI Drive")
-            return items
+            # The response might be HTML or JSON, handle both
+            content_type = response.headers.get('content-type', '')
+            if 'json' in content_type.lower():
+                data = response.json()
+                items = data.get("items", [])
+                self.logger.info(f"Retrieved {len(items)} items from AI Drive")
+                return items
+            else:
+                # Response is HTML, need to parse it
+                self.logger.warning("API returned HTML instead of JSON, may need to parse HTML")
+                # For now, return empty list
+                return []
             
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Failed to list files: {e}")
