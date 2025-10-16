@@ -149,7 +149,7 @@ class GenSparkAPIClient:
             self.logger.error(f"Failed to download {file_name}: {e}")
             return False
     
-    def request_upload_url(self, filename: str, filesize: int = 0) -> Optional[str]:
+    def request_upload_url(self, filename: str, filesize: int = 0) -> Optional[tuple]:
         """
         Request upload URL from GenSpark (Step 1 of 3-step upload)
         
@@ -158,7 +158,7 @@ class GenSparkAPIClient:
             filesize: Size of file in bytes (not used currently)
             
         Returns:
-            Azure Blob Storage upload URL or None
+            Tuple of (upload_url, token) or None
         """
         try:
             # Discovered from Chrome DevTools:
@@ -177,24 +177,26 @@ class GenSparkAPIClient:
             if data.get("status") == "success":
                 upload_data = data.get("data", {})
                 upload_url = upload_data.get("upload_url")
+                token = upload_data.get("token")
                 
-                if upload_url:
-                    self.logger.info(f"Got upload URL for: {filename}")
-                    return upload_url
+                if upload_url and token:
+                    self.logger.info(f"Got upload URL and token for: {filename}")
+                    return (upload_url, token)
             
-            self.logger.error(f"No upload_url in response: {data}")
+            self.logger.error(f"No upload_url or token in response: {data}")
             return None
                 
         except Exception as e:
             self.logger.error(f"Failed to request upload URL: {e}")
             return None
     
-    def confirm_upload(self, filename: str) -> bool:
+    def confirm_upload(self, filename: str, token: str) -> bool:
         """
         Confirm upload to GenSpark (Step 3 of 3-step upload)
         
         Args:
             filename: Name of uploaded file
+            token: Upload token from get_upload_url response
             
         Returns:
             True if confirmed successfully
@@ -202,24 +204,15 @@ class GenSparkAPIClient:
         try:
             # Discovered from Chrome DevTools:
             # POST /api/aidrive/confirm_upload/files/{filename}
+            # Body: {"token": "..."}
             from urllib.parse import quote
             encoded_filename = quote(filename)
             url = f"{self.API_BASE}/confirm_upload/files/{encoded_filename}"
             
+            payload = {"token": token}
+            
             self.logger.info(f"Confirming upload for: {filename}")
-            self.logger.info(f"Confirm URL: {url}")
-            
-            # Try with empty JSON body (some APIs require this)
-            response = self.session.post(url, json={}, timeout=10)
-            
-            # Log response for debugging
-            self.logger.info(f"Confirm response status: {response.status_code}")
-            try:
-                response_data = response.json()
-                self.logger.info(f"Confirm response: {response_data}")
-            except:
-                self.logger.info(f"Confirm response text: {response.text[:500]}")
-            
+            response = self.session.post(url, json=payload, timeout=10)
             response.raise_for_status()
             
             self.logger.info(f"Upload confirmed for: {filename}")
@@ -227,6 +220,11 @@ class GenSparkAPIClient:
                 
         except Exception as e:
             self.logger.error(f"Failed to confirm upload: {e}")
+            # Log response for debugging
+            try:
+                self.logger.error(f"Response: {e.response.json()}")
+            except:
+                pass
             return False
     
     def upload_file(self, local_path: Path, remote_filename: str) -> bool:
@@ -244,10 +242,12 @@ class GenSparkAPIClient:
             True if successful, False otherwise
         """
         try:
-            # Step 1: Request upload URL from GenSpark
-            upload_url = self.request_upload_url(remote_filename)
-            if not upload_url:
+            # Step 1: Request upload URL and token from GenSpark
+            upload_result = self.request_upload_url(remote_filename)
+            if not upload_result:
                 return False
+            
+            upload_url, token = upload_result
             
             # Step 2: Upload file directly to Azure Blob Storage
             self.logger.info(f"Uploading to Azure: {local_path.name}")
@@ -278,8 +278,8 @@ class GenSparkAPIClient:
             
             self.logger.info(f"Uploaded to Azure: {remote_filename}")
             
-            # Step 3: Confirm upload with GenSpark
-            if not self.confirm_upload(remote_filename):
+            # Step 3: Confirm upload with GenSpark using token
+            if not self.confirm_upload(remote_filename, token):
                 self.logger.error("Upload succeeded but confirmation failed")
                 return False
             
