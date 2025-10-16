@@ -65,7 +65,7 @@ class SyncEngine:
         try:
             self.state = self.smart_state.get_all_files()
             stats = self.smart_state.get_stats()
-            self.logger.info(f"✅ Loaded state: {stats['total']} files tracked ({stats['total_size']} bytes)")
+            self.logger.debug(f"Loaded state: {stats['total']} files tracked ({stats['total_size']} bytes)")
         except Exception as e:
             self.logger.error(f"Failed to load state: {e}")
             self.state = {}
@@ -184,12 +184,11 @@ class SyncEngine:
                 }
         
         # Step 3: Scan each folder for files
-        self.logger.info(f"Scanning {len(folders_to_scan)} folders for files...")
+        if folders_to_scan:
+            self.logger.debug(f"Scanning {len(folders_to_scan)} folders...")
         for folder in folders_to_scan:
             folder_path = folder['path']
             folder_name = folder['name']
-            
-            self.logger.debug(f"Scanning folder: {folder_name}")
             
             # Get files in this folder
             folder_items = self.api_client.list_files(folder_path=folder_path)
@@ -330,24 +329,14 @@ class SyncEngine:
         local_files = self.scan_local_files()
         remote_files = self.scan_remote_files()
         
-        self.logger.info(f"Local: {len(local_files)} files, Remote: {len(remote_files)} files")
+        self.logger.debug(f"Scanned: {len(local_files)} local, {len(remote_files)} remote files")
         
         # Detect conflicts
         conflicts = self.detect_conflicts(local_files, remote_files)
         
         if conflicts:
-            self.logger.warning(f"Found {len(conflicts)} conflicts - manual resolution needed")
-            for conflict in conflicts:
-                path = conflict['path']
-                local = conflict['local']
-                remote = conflict['remote']
-                self.logger.warning(f"⚠️  CONFLICT: {path}")
-                self.logger.warning(f"    Local:  size={local['size']} bytes, mtime={local['modified_time']}")
-                self.logger.warning(f"    Remote: size={remote['size']} bytes, mtime={remote['modified_time']}")
-                self.logger.warning(f"    → Both files changed since last sync - keeping both versions")
+            self.logger.warning(f"⚠️  {len(conflicts)} conflicts detected (both sides modified)")
             self.stats['conflicts'] += len(conflicts)
-            # Don't return early - continue with non-conflicting files
-            # return self.stats
         
         # Handle remote-only files (files that exist on remote but not locally)
         remote_only = set(remote_files.keys()) - set(local_files.keys())
@@ -368,17 +357,17 @@ class SyncEngine:
         
         # Handle files deleted locally (delete from remote)
         if deleted_local_files:
-            self.logger.info(f"📤 Files deleted locally: {len(deleted_local_files)}")
+            self.logger.info(f"🗑️  Propagating {len(deleted_local_files)} local deletions to AI Drive")
             for path in deleted_local_files:
                 remote = remote_files[path]
-                self.logger.info(f"Deleting from AI Drive (deleted locally): {path}")
+                self.logger.debug(f"Deleting from remote: {path}")
                 if self.api_client.delete_file('', remote['name'], remote['file_path']):
                     self.stats['remote_only_deleted'] += 1
-                    # Remove from state
                     self.delete_file_state(path)
         
         # Handle new remote files (download)
-        self.logger.info(f"Files to download: {len(new_remote_files)}")
+        if new_remote_files:
+            self.logger.info(f"📥 Downloading {len(new_remote_files)} new remote files")
         
         if new_remote_files and self.sync_strategy == 'local':
             # Local priority: Delete new remote files (should not happen with bidirectional sync)
@@ -416,7 +405,7 @@ class SyncEngine:
                 
                 if choice == 'D':
                     # Download file
-                    self.logger.info(f"User chose: Download {path}")
+                    self.logger.debug(f"User chose: Download {path}")
                     self.downloading_files.add(path)
                     
                     try:
@@ -437,7 +426,7 @@ class SyncEngine:
                 
                 elif choice == 'X':
                     # Delete from remote
-                    self.logger.info(f"User chose: Delete {path}")
+                    self.logger.debug(f"User chose: Delete {path}")
                     if self.api_client.delete_file('', remote['name'], remote['file_path']):
                         self.stats['remote_only_deleted'] += 1
                         self.delete_file_state(path)
@@ -447,7 +436,7 @@ class SyncEngine:
                 
                 else:  # choice == 'S'
                     # Skip - do nothing
-                    self.logger.info(f"User chose: Skip {path}")
+                    self.logger.debug(f"User chose: Skip {path}")
                     print(f"⏭️  Skipped: {path}")
         
         else:
@@ -456,7 +445,7 @@ class SyncEngine:
                 remote = remote_files[path]
                 local_path = self.local_root / path
                 
-                self.logger.info(f"Downloading new file: {path}")
+                self.logger.debug(f"Downloading: {path}")
                 
                 # Mark as downloading to avoid file watcher re-uploading
                 self.downloading_files.add(path)
@@ -498,22 +487,21 @@ class SyncEngine:
         
         # Handle files deleted from remote (delete locally)
         if deleted_remote_files:
-            self.logger.info(f"📥 Files deleted from AI Drive: {len(deleted_remote_files)}")
+            self.logger.info(f"🗑️  Propagating {len(deleted_remote_files)} remote deletions locally")
             for path in deleted_remote_files:
                 local_path = self.local_root / path
-                self.logger.info(f"Deleting file (deleted from remote): {path}")
+                self.logger.debug(f"Deleting locally: {path}")
                 try:
                     if local_path.exists():
                         local_path.unlink()
                         self.stats['local_only_deleted'] += 1
-                        self.logger.info(f"✅ Deleted local file: {path}")
-                    # Remove from state
                     self.delete_file_state(path)
                 except Exception as e:
-                    self.logger.error(f"Failed to delete local file {path}: {e}")
+                    self.logger.error(f"Failed to delete {path}: {e}")
         
         # Handle new local files (upload to remote)
-        self.logger.info(f"Files to upload: {len(new_local_files)}")
+        if new_local_files:
+            self.logger.info(f"📤 Uploading {len(new_local_files)} new local files")
         
         if new_local_files and self.sync_strategy == 'remote':
             # Remote priority: Delete new local files (should not happen with 'local' default)
@@ -522,16 +510,14 @@ class SyncEngine:
             
             for path in new_local_files:
                 local_path = self.local_root / path
-                self.logger.info(f"Deleting local-only file: {path}")
+                self.logger.debug(f"Deleting local: {path}")
                 try:
                     if local_path.exists():
                         local_path.unlink()
                         self.stats['local_only_deleted'] += 1
-                        self.logger.info(f"✅ Deleted local file: {path}")
-                        # Remove from state if exists
                         self.delete_file_state(path)
                 except Exception as e:
-                    self.logger.error(f"Failed to delete local file {path}: {e}")
+                    self.logger.error(f"Failed to delete {path}: {e}")
         
         elif new_local_files and self.sync_strategy == 'ask':
             # Ask strategy: Prompt user for each new local file
@@ -558,7 +544,7 @@ class SyncEngine:
                 
                 if choice == 'U':
                     # Upload file
-                    self.logger.info(f"User chose: Upload {path}")
+                    self.logger.debug(f"User chose: Upload {path}")
                     
                     with self.upload_lock:
                         if path in self.uploading_files:
@@ -579,7 +565,7 @@ class SyncEngine:
                 
                 elif choice == 'X':
                     # Delete from local
-                    self.logger.info(f"User chose: Delete local {path}")
+                    self.logger.debug(f"User chose: Delete local {path}")
                     try:
                         if local_path.exists():
                             local_path.unlink()
@@ -592,7 +578,7 @@ class SyncEngine:
                 
                 else:  # choice == 'S'
                     # Skip - do nothing
-                    self.logger.info(f"User chose: Skip {path}")
+                    self.logger.debug(f"User chose: Skip {path}")
                     print(f"⏭️  Skipped: {path}")
         
         else:
@@ -612,7 +598,7 @@ class SyncEngine:
                     self.uploading_files.add(path)
                 
                 try:
-                    self.logger.info(f"Uploading new file: {path}")
+                    self.logger.debug(f"Uploading: {path}")
                     
                     # Use full path for files in folders (e.g., "TestOrdner/file.txt")
                     # API expects: /api/aidrive/get_upload_url/files/TestOrdner/file.txt
@@ -648,7 +634,7 @@ class SyncEngine:
             
             if local_changed and not remote_changed:
                 # Upload modified local file
-                self.logger.info(f"Uploading modified file: {path}")
+                self.logger.debug(f"Uploading modified: {path}")
                 local_path = self.local_root / path
                 
                 # Use update_file if we have remote info (delete + upload)
@@ -670,7 +656,7 @@ class SyncEngine:
             
             elif remote_changed and not local_changed:
                 # Download modified remote file
-                self.logger.info(f"Downloading modified file: {path}")
+                self.logger.debug(f"Downloading modified: {path}")
                 local_path = self.local_root / path
                 
                 # Mark as downloading
@@ -706,21 +692,20 @@ class SyncEngine:
             self.uploading_files.clear()
         threading.Thread(target=clear_tracking_sets, daemon=True).start()
         
-        # Log summary
+        # Log summary (ONLY if changes occurred)
         summary_parts = []
         if self.stats['uploads'] > 0:
-            summary_parts.append(f"{self.stats['uploads']} uploads")
+            summary_parts.append(f"↑{self.stats['uploads']}")
         if self.stats['downloads'] > 0:
-            summary_parts.append(f"{self.stats['downloads']} downloads")
+            summary_parts.append(f"↓{self.stats['downloads']}")
         if self.stats['remote_only_deleted'] > 0:
-            summary_parts.append(f"{self.stats['remote_only_deleted']} remote deletions")
+            summary_parts.append(f"🗑️→{self.stats['remote_only_deleted']}")
         if self.stats['local_only_deleted'] > 0:
-            summary_parts.append(f"{self.stats['local_only_deleted']} local deletions")
+            summary_parts.append(f"🗑️←{self.stats['local_only_deleted']}")
         
         if summary_parts:
-            self.logger.info(f"Sync complete: {', '.join(summary_parts)}")
-        else:
-            self.logger.info("Sync complete: No changes")
+            self.logger.info(f"✅ Sync: {' | '.join(summary_parts)}")
+        
         return self.stats
     
     def handle_local_change(self, path: Path, event_type: str):
@@ -750,15 +735,13 @@ class SyncEngine:
                     return
                 
                 # Upload file with full path for folders support
-                self.logger.info(f"Uploading: {relative_path}")
+                self.logger.debug(f"Uploading: {relative_path}")
                 if self.api_client.upload_file(path, relative_path):
                     # Double-check file exists before getting stats (paranoid check)
                     if path.exists():
-                        self.state[relative_path] = {
-                            'modified_time': int(path.stat().st_mtime),
-                            'size': path.stat().st_size
-                        }
-                        self.save_state()
+                        stat = path.stat()
+                        quick_hash = self.get_file_hash(path)
+                        self.update_file_state(relative_path, stat.st_size, int(stat.st_mtime), quick_hash)
                         self.stats['uploads'] += 1
                     else:
                         self.logger.debug(f"File disappeared after upload: {relative_path}")
@@ -779,7 +762,7 @@ class SyncEngine:
             if relative_path in remote_files:
                 # It's a file - delete it
                 remote = remote_files[relative_path]
-                self.logger.info(f"Deleting file from remote: {relative_path}")
+                self.logger.debug(f"Deleting from remote: {relative_path}")
                 self.api_client.delete_file('', remote['name'], remote['file_path'])
                 
                 # Remove from state
@@ -802,13 +785,13 @@ class SyncEngine:
                         files_in_folder.append(file_path)
                 
                 if files_in_folder:
-                    self.logger.info(f"Folder deleted locally: {relative_path} (contains {len(files_in_folder)} files)")
+                    self.logger.info(f"🗑️  Deleting folder: {relative_path} ({len(files_in_folder)} files)")
                     
                     # Delete all files in the folder from remote
                     for file_path in files_in_folder:
                         if file_path in remote_files:
                             remote = remote_files[file_path]
-                            self.logger.info(f"  Deleting: {file_path}")
+                            self.logger.debug(f"  Deleting: {file_path}")
                             self.api_client.delete_file('', remote['name'], remote['file_path'])
                         
                         # Remove from state
@@ -816,7 +799,6 @@ class SyncEngine:
                             del self.state[file_path]
                     
                     self.save_state()
-                    self.logger.info(f"✅ Folder deletion complete: {relative_path}")
                 else:
                     # File/folder not found anywhere - might have been already deleted
                     self.logger.debug(f"Delete event for unknown path: {relative_path}")

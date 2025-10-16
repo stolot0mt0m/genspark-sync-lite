@@ -104,7 +104,7 @@ class GenSparkSyncApp:
     
     def _ai_drive_poller(self):
         """Background thread that polls AI Drive for changes"""
-        self.logger.info(f"Starting AI Drive poller (interval: {self.poll_interval}s)")
+        self.logger.debug(f"Starting AI Drive poller (interval: {self.poll_interval}s)")
         
         last_sync = 0
         
@@ -114,31 +114,8 @@ class GenSparkSyncApp:
                 
                 # Check if it's time to sync
                 if current_time - last_sync >= self.poll_interval:
-                    self.logger.debug("Polling AI Drive for changes...")
-                    
-                    # Perform sync
-                    stats = self.sync_engine.sync_once()
-                    
-                    # Log if there were changes
-                    has_changes = (stats['uploads'] > 0 or stats['downloads'] > 0 or 
-                                   stats.get('remote_only_deleted', 0) > 0 or 
-                                   stats.get('local_only_deleted', 0) > 0)
-                    
-                    if has_changes:
-                        log_parts = []
-                        if stats['downloads'] > 0:
-                            log_parts.append(f"{stats['downloads']} downloads")
-                        if stats['uploads'] > 0:
-                            log_parts.append(f"{stats['uploads']} uploads")
-                        if stats.get('remote_only_deleted', 0) > 0:
-                            log_parts.append(f"{stats['remote_only_deleted']} remote deletions")
-                        if stats.get('local_only_deleted', 0) > 0:
-                            log_parts.append(f"{stats['local_only_deleted']} local deletions")
-                        if stats['conflicts'] > 0:
-                            log_parts.append(f"{stats['conflicts']} conflicts")
-                        
-                        self.logger.info(f"Sync: {', '.join(log_parts)}")
-                    
+                    # Perform sync (no log here, sync_engine logs if changes)
+                    self.sync_engine.sync_once()
                     last_sync = current_time
                 
                 # Sleep for 1 second and check again
@@ -159,39 +136,19 @@ class GenSparkSyncApp:
         
         # Start file watcher
         self.file_watcher.start()
-        self.logger.info("✅ File watcher started")
         
         # Initial sync
-        self.logger.info("Performing initial sync...")
-        stats = self.sync_engine.sync_once()
-        
-        # Build summary message
-        summary_parts = []
-        if stats['downloads'] > 0:
-            summary_parts.append(f"{stats['downloads']} downloads")
-        if stats['uploads'] > 0:
-            summary_parts.append(f"{stats['uploads']} uploads")
-        if stats.get('remote_only_deleted', 0) > 0:
-            summary_parts.append(f"{stats['remote_only_deleted']} remote deletions")
-        if stats.get('local_only_deleted', 0) > 0:
-            summary_parts.append(f"{stats['local_only_deleted']} local deletions")
-        if stats['conflicts'] > 0:
-            summary_parts.append(f"{stats['conflicts']} conflicts")
-        
-        if summary_parts:
-            self.logger.info(f"Initial sync complete: {', '.join(summary_parts)}")
-        else:
-            self.logger.info("Initial sync complete: No changes")
+        self.logger.info("🔄 Performing initial sync...")
+        self.sync_engine.sync_once()
         
         # Start poller thread
         self.is_running = True
         self.poller_thread = threading.Thread(target=self._ai_drive_poller, daemon=True)
         self.poller_thread.start()
-        self.logger.info("✅ AI Drive poller started")
         
-        self.logger.info("🎉 GenSpark Sync Lite is now running!")
-        self.logger.info(f"   - Local changes: Uploaded immediately")
-        self.logger.info(f"   - Remote changes: Checked every {self.poll_interval}s")
+        self.logger.info("🎉 GenSpark Sync Lite is running!")
+        self.logger.info(f"   Local changes → Uploaded immediately")
+        self.logger.info(f"   Remote changes → Polled every {self.poll_interval}s")
     
     def stop(self):
         """Stop the sync application"""
@@ -213,7 +170,7 @@ class GenSparkSyncApp:
         if self.sync_engine:
             self.sync_engine.save_state()
         
-        self.logger.info("✅ GenSpark Sync Lite stopped")
+        self.logger.info("✅ Stopped")
     
     def print_stats(self):
         """Print current statistics"""

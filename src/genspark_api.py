@@ -48,7 +48,7 @@ class GenSparkAPIClient:
                 self.session.cookies.set_cookie(cookie)
             
             self.cookies_loaded = True
-            self.logger.info(f"Loaded {len(self.session.cookies)} cookies from Chrome")
+            self.logger.debug(f"Loaded {len(self.session.cookies)} cookies from Chrome")
             return True
             
         except Exception as e:
@@ -91,7 +91,7 @@ class GenSparkAPIClient:
             data = response.json()
             items = data.get("items", [])
             
-            self.logger.info(f"Retrieved {len(items)} items from AI Drive" + (f" (folder: {folder_path})" if folder_path else ""))
+            self.logger.debug(f"Retrieved {len(items)} items from AI Drive" + (f" (folder: {folder_path})" if folder_path else ""))
             return items
             
         except requests.exceptions.RequestException as e:
@@ -138,7 +138,7 @@ class GenSparkAPIClient:
             clean_path = file_path.lstrip('/')
             url = f"{self.BASE_URL}/api/aidrive/download/files/{clean_path}"
             
-            self.logger.info(f"Downloading: {file_name}")
+            self.logger.debug(f"Downloading: {file_name}")
             
             # Follow redirects to Azure Blob Storage
             response = self.session.get(url, stream=True, timeout=60, allow_redirects=True)
@@ -151,7 +151,7 @@ class GenSparkAPIClient:
                     if chunk:
                         f.write(chunk)
             
-            self.logger.info(f"Downloaded: {file_name} → {destination}")
+            self.logger.debug(f"Downloaded: {file_name}")
             return True
             
         except Exception as e:
@@ -178,8 +178,7 @@ class GenSparkAPIClient:
             encoded_filename = quote(filename, safe='/')
             url = f"{self.API_BASE}/get_upload_url/files/{encoded_filename}"
             
-            self.logger.info(f"Requesting upload URL for: {filename}")
-            self.logger.debug(f"URL: {url}")
+            self.logger.debug(f"Requesting upload URL for: {filename}")
             response = self.session.get(url, timeout=10)
             
             # Check for "EntryAlreadyExistsError" (file already exists)
@@ -215,7 +214,7 @@ class GenSparkAPIClient:
                 token = upload_data.get("token")
                 
                 if upload_url and token:
-                    self.logger.info(f"✅ Got upload URL and token for: {filename}")
+                    self.logger.debug(f"Got upload URL and token for: {filename}")
                     return (upload_url, token)
             
             self.logger.error(f"No upload_url or token in response: {data}")
@@ -250,7 +249,7 @@ class GenSparkAPIClient:
             encoded_path = quote(folder_path, safe='/')
             url = f"{self.API_BASE}/mkdir/files/{encoded_path}/"
             
-            self.logger.info(f"Creating folder: {folder_path}")
+            self.logger.debug(f"Creating folder: {folder_path}")
             response = self.session.post(url, timeout=10)
             
             # Check if folder already exists (status 400 with "already exists" message)
@@ -273,7 +272,7 @@ class GenSparkAPIClient:
             
             response.raise_for_status()
             
-            self.logger.info(f"Folder created: {folder_path}")
+            self.logger.debug(f"Folder created: {folder_path}")
             return True
                 
         except Exception as e:
@@ -304,8 +303,7 @@ class GenSparkAPIClient:
             
             payload = {"token": token}
             
-            self.logger.info(f"Confirming upload for: {filename}")
-            self.logger.debug(f"URL: {url}")
+            self.logger.debug(f"Confirming upload for: {filename}")
             response = self.session.post(url, json=payload, timeout=10)
             
             # Check for "Entry already exists" (file was already confirmed, treat as success)
@@ -329,7 +327,7 @@ class GenSparkAPIClient:
             
             response.raise_for_status()
             
-            self.logger.info(f"✅ Upload confirmed for: {filename}")
+            self.logger.debug(f"Upload confirmed for: {filename}")
             return True
                 
         except Exception as e:
@@ -384,13 +382,13 @@ class GenSparkAPIClient:
             
             # Check if file already exists
             if upload_result[0] == 'ALREADY_EXISTS':
-                self.logger.info(f"✅ File already in AI Drive (no upload needed): {remote_filename}")
+                self.logger.debug(f"File already exists: {remote_filename}")
                 return True  # Treat as success
             
             upload_url, token = upload_result
             
             # Step 2: Upload file directly to Azure Blob Storage
-            self.logger.info(f"Uploading to Azure: {local_path.name}")
+            self.logger.debug(f"Uploading to Azure: {local_path.name}")
             
             # Check if file still exists before reading (race condition prevention)
             if not local_path.exists():
@@ -425,14 +423,14 @@ class GenSparkAPIClient:
             )
             response.raise_for_status()
             
-            self.logger.info(f"Uploaded to Azure: {remote_filename}")
+            self.logger.debug(f"Uploaded to Azure: {remote_filename}")
             
             # Step 3: Confirm upload with GenSpark using token
             if not self.confirm_upload(remote_filename, token):
                 self.logger.error("Upload succeeded but confirmation failed")
                 return False
             
-            self.logger.info(f"✅ Upload complete: {remote_filename}")
+            self.logger.debug(f"Upload complete: {remote_filename}")
             return True
             
         except Exception as e:
@@ -466,8 +464,7 @@ class GenSparkAPIClient:
                 self.logger.warning(f"Using deprecated ID-based delete for: {filename}")
                 url = f"{self.API_BASE}/files/{file_id}"
             
-            self.logger.info(f"Deleting: {filename}")
-            self.logger.debug(f"Delete URL: {url}")
+            self.logger.debug(f"Deleting: {filename}")
             response = self.session.delete(url, timeout=10)
             
             # Log response for debugging
@@ -480,7 +477,7 @@ class GenSparkAPIClient:
             
             response.raise_for_status()
             
-            self.logger.info(f"✅ Deleted: {filename}")
+            self.logger.debug(f"Deleted: {filename}")
             return True
             
         except Exception as e:
@@ -504,7 +501,7 @@ class GenSparkAPIClient:
             True if successfully updated, False otherwise
         """
         try:
-            self.logger.info(f"Updating file: {remote_filename}")
+            self.logger.debug(f"Updating file: {remote_filename}")
             
             # Step 1: Try to delete old version using path (not ID!)
             # Always prefer path-based delete (works for all files)

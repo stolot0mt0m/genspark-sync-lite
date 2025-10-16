@@ -26,7 +26,7 @@ class SmartSyncState:
         # Create schema if needed
         self.create_schema()
         
-        self.logger.info(f"Smart state initialized: {db_path}")
+        self.logger.debug(f"Smart state initialized: {db_path}")
     
     def connect(self):
         """Connect to SQLite database"""
@@ -80,7 +80,6 @@ class SmartSyncState:
         """)
         
         self.conn.commit()
-        self.logger.debug("Database schema created/verified")
     
     def get_quick_hash(self, file_path: Path) -> Optional[str]:
         """
@@ -260,17 +259,17 @@ def migrate_json_to_sqlite(json_path: Path, db_path: Path) -> bool:
         return False
     
     if db_path.exists():
-        logger.info("SQLite database already exists, skipping migration")
+        logger.debug("SQLite database already exists, skipping migration")
         return False
     
-    logger.info(f"Migrating JSON state to SQLite: {json_path} → {db_path}")
+    logger.info(f"📦 Migrating JSON state to SQLite: {json_path.name}")
     
     try:
         # Load old JSON state
         with open(json_path, 'r') as f:
             old_state = json.load(f)
         
-        logger.info(f"Loaded {len(old_state)} files from JSON")
+        logger.debug(f"Loaded {len(old_state)} files from JSON")
         
         # Create new SQLite state
         state = SmartSyncState(db_path)
@@ -302,7 +301,7 @@ def migrate_json_to_sqlite(json_path: Path, db_path: Path) -> bool:
         backup_path = json_path.with_suffix('.json.backup')
         json_path.rename(backup_path)
         
-        logger.info(f"✅ Migration complete! Old file backed up to: {backup_path}")
+        logger.info(f"✅ Migration complete ({len(old_state)} files)")
         return True
         
     except Exception as e:
