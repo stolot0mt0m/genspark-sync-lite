@@ -226,15 +226,26 @@ class SyncEngine:
         
         if conflicts:
             self.logger.warning(f"Found {len(conflicts)} conflicts - manual resolution needed")
+            for conflict in conflicts:
+                path = conflict['path']
+                local = conflict['local']
+                remote = conflict['remote']
+                self.logger.warning(f"CONFLICT: {path}")
+                self.logger.warning(f"  Local:  size={local['size']}, mtime={local['modified_time']}")
+                self.logger.warning(f"  Remote: size={remote['size']}, mtime={remote['modified_time']}")
+                self.logger.warning(f"  → Both files changed since last sync")
             self.stats['conflicts'] += len(conflicts)
             # In a real app, this would trigger UI notification
             return self.stats
         
         # Download new remote files
         remote_only = set(remote_files.keys()) - set(local_files.keys())
+        self.logger.info(f"Files to download: {len(remote_only)}")
         for path in remote_only:
             remote = remote_files[path]
             local_path = self.local_root / path
+            
+            self.logger.info(f"Downloading new file: {path}")
             
             # Mark as downloading to avoid file watcher re-uploading
             self.downloading_files.add(path)
@@ -259,9 +270,12 @@ class SyncEngine:
         
         # Upload new local files
         local_only = set(local_files.keys()) - set(remote_files.keys())
+        self.logger.info(f"Files to upload: {len(local_only)}")
         for path in local_only:
             local = local_files[path]
             local_path = self.local_root / path
+            
+            self.logger.info(f"Uploading new file: {path}")
             
             if self.api_client.upload_file(local_path, Path(path).name):
                 self.state[path] = {
