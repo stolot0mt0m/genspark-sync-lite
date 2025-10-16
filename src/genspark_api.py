@@ -362,9 +362,14 @@ class GenSparkAPIClient:
             if '/' in remote_filename:
                 # Extract folder path (everything before last /)
                 folder_path = '/'.join(remote_filename.split('/')[:-1])
-                if not self.create_folder(folder_path):
-                    self.logger.error(f"Failed to create folder: {folder_path}")
-                    # Continue anyway - folder might already exist
+                
+                # Create nested folders step by step (Parent → Parent/Child)
+                path_parts = folder_path.split('/')
+                for i in range(len(path_parts)):
+                    partial_path = '/'.join(path_parts[:i+1])
+                    if not self.create_folder(partial_path):
+                        self.logger.debug(f"Folder creation skipped or failed: {partial_path}")
+                        # Continue anyway - folder might already exist
             
             # Continue with normal upload process
             # Step 1: Request upload URL and token from GenSpark
