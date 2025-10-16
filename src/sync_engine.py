@@ -342,7 +342,34 @@ class SyncEngine:
         
         if conflicts:
             self.logger.warning(f"⚠️  {len(conflicts)} conflicts detected (both sides modified)")
+            self.logger.info(f"🔥 LOCAL WINS strategy: Resolving conflicts by keeping local version")
             self.stats['conflicts'] += len(conflicts)
+            
+            # LOCAL WINS: Resolve all conflicts by keeping local version
+            for conflict in conflicts:
+                path = conflict['path']
+                local_path = self.local_root / path
+                remote = conflict['remote']
+                
+                self.logger.debug(f"Conflict resolution (local wins): {path}")
+                
+                # Step 1: Delete remote version (old)
+                if self.api_client.delete_file('', remote['name'], remote['file_path']):
+                    self.logger.debug(f"  ✓ Deleted old remote version")
+                else:
+                    self.logger.warning(f"  ✗ Failed to delete remote version")
+                    continue
+                
+                # Step 2: Upload local version (new)
+                if self.api_client.upload_file(local_path, path):
+                    # Update state with local hash
+                    local = conflict['local']
+                    file_hash = local.get('hash', '') or ''
+                    self.update_file_state(path, local['size'], local['modified_time'], file_hash)
+                    self.stats['uploads'] += 1
+                    self.logger.info(f"✅ Conflict resolved (local wins): {path}")
+                else:
+                    self.logger.error(f"  ✗ Failed to upload local version: {path}")
         
         # Handle remote-only files (files that exist on remote but not locally)
         remote_only = set(remote_files.keys()) - set(local_files.keys())
