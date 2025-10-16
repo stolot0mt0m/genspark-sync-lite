@@ -66,12 +66,11 @@ class GenSparkAPIClient:
             List of file/folder dictionaries or None on error
         """
         try:
-            # Use /api/aidrive/files endpoint which returns folders AND files with paths
-            url = f"{self.BASE_URL}/api/aidrive/files"
+            # TEMPORARY: Fall back to working endpoint for root files
+            # TODO: Discover correct endpoint for folders+files from Chrome DevTools
+            url = f"{self.API_BASE}/files"
             params = {
-                "filter_type": "all",
-                "sort_by": "modified_desc",
-                "file_type": "all"
+                "limit": limit
             }
             
             self.logger.debug(f"Listing files: {url}")
