@@ -375,18 +375,7 @@ class SyncEngine:
         if new_remote_files:
             self.logger.info(f"📥 Downloading {len(new_remote_files)} new remote files")
         
-        if new_remote_files and self.sync_strategy == 'local':
-            # Local priority: Delete new remote files (should not happen with bidirectional sync)
-            self.logger.warning(f"⚠️  Sync strategy: LOCAL priority")
-            self.logger.warning(f"⚠️  {len(new_remote_files)} new remote files will be DELETED from AI Drive")
-            
-            for path in new_remote_files:
-                remote = remote_files[path]
-                self.logger.info(f"Deleting new remote file: {path}")
-                if self.api_client.delete_file('', remote['name'], remote['file_path']):
-                    self.stats['remote_only_deleted'] += 1
-        
-        elif new_remote_files and self.sync_strategy == 'ask':
+        if new_remote_files and self.sync_strategy == 'ask':
             # Ask strategy: Prompt user for each new remote file
             self.logger.warning(f"⚠️  Sync strategy: ASK for each file")
             self.logger.warning(f"⚠️  Found {len(new_remote_files)} new remote files")
@@ -507,23 +496,7 @@ class SyncEngine:
         if new_local_files:
             self.logger.info(f"📤 Uploading {len(new_local_files)} new local files")
         
-        if new_local_files and self.sync_strategy == 'remote':
-            # Remote priority: Delete new local files (should not happen with 'local' default)
-            self.logger.warning(f"⚠️  Sync strategy: REMOTE priority")
-            self.logger.warning(f"⚠️  {len(new_local_files)} new local files will be DELETED")
-            
-            for path in new_local_files:
-                local_path = self.local_root / path
-                self.logger.debug(f"Deleting local: {path}")
-                try:
-                    if local_path.exists():
-                        local_path.unlink()
-                        self.stats['local_only_deleted'] += 1
-                        self.delete_file_state(path)
-                except Exception as e:
-                    self.logger.error(f"Failed to delete {path}: {e}")
-        
-        elif new_local_files and self.sync_strategy == 'ask':
+        if new_local_files and self.sync_strategy == 'ask':
             # Ask strategy: Prompt user for each new local file
             self.logger.warning(f"⚠️  Sync strategy: ASK for each file")
             self.logger.warning(f"⚠️  Found {len(new_local_files)} new local files")
@@ -585,7 +558,7 @@ class SyncEngine:
                     print(f"⏭️  Skipped: {path}")
         
         else:
-            # Local priority (or default): Upload new local files
+            # Bidirectional sync (default): Upload new local files
             for path in new_local_files:
                 local = local_files[path]
                 local_path = self.local_root / path

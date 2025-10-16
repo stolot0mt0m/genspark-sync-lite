@@ -280,65 +280,94 @@ class GenSparkAPIClient:
             self.logger.error(f"Failed to create folder: {e}")
             return False
     
-    def confirm_upload(self, filename: str, token: str) -> bool:
+    def confirm_upload(self, filename: str, token: str, retry_count: int = 3) -> bool:
         """
         Confirm upload to GenSpark (Step 3 of 3-step upload)
         
         Args:
             filename: Name of uploaded file
             token: Upload token from get_upload_url response
+            retry_count: Number of retries on server error (default: 3)
             
         Returns:
             True if confirmed successfully
         """
-        try:
-            # Discovered from Chrome DevTools:
-            # POST /api/aidrive/confirm_upload/files/{filename}
-            # Body: {"token": "..."}
-            from urllib.parse import quote
-            # CRITICAL: safe='/' preserves folder structure (e.g., "Folder/file.txt")
-            # Without it, "/" becomes "%2F" which API rejects
-            encoded_filename = quote(filename, safe='/')
-            url = f"{self.API_BASE}/confirm_upload/files/{encoded_filename}"
-            
-            payload = {"token": token}
-            
-            self.logger.debug(f"Confirming upload for: {filename}")
-            response = self.session.post(url, json=payload, timeout=10)
-            
-            # Check for "Entry already exists" (file was already confirmed, treat as success)
-            if response.status_code == 400:
-                try:
-                    error_data = response.json()
-                    error_detail = error_data.get('detail', '')
-                    if 'already exists' in str(error_detail).lower():
-                        self.logger.info(f"File already confirmed in AI Drive: {filename} (treating as success)")
-                        return True
-                except:
-                    pass
-            
-            # Log response status for other errors
-            if response.status_code != 200:
-                try:
-                    error_data = response.json()
-                    self.logger.error(f"confirm_upload failed [{response.status_code}]: {error_data}")
-                except:
-                    self.logger.error(f"confirm_upload failed [{response.status_code}]: {response.text[:200]}")
-            
-            response.raise_for_status()
-            
-            self.logger.debug(f"Upload confirmed for: {filename}")
-            return True
-                
-        except Exception as e:
-            self.logger.error(f"Failed to confirm upload for '{filename}': {e}")
-            # Log response for debugging
+        import time
+        
+        for attempt in range(retry_count):
             try:
-                if hasattr(e, 'response') and e.response is not None:
-                    self.logger.error(f"Response: {e.response.text[:500]}")
-            except:
-                pass
-            return False
+                # Discovered from Chrome DevTools:
+                # POST /api/aidrive/confirm_upload/files/{filename}
+                # Body: {"token": "..."}
+                from urllib.parse import quote
+                # CRITICAL: safe='/' preserves folder structure (e.g., "Folder/file.txt")
+                # Without it, "/" becomes "%2F" which API rejects
+                encoded_filename = quote(filename, safe='/')
+                url = f"{self.API_BASE}/confirm_upload/files/{encoded_filename}"
+                
+                payload = {"token": token}
+                
+                self.logger.debug(f"Confirming upload for: {filename} (attempt {attempt + 1}/{retry_count})")
+                response = self.session.post(url, json=payload, timeout=30)  # Increased timeout
+                
+                # Check for "Entry already exists" (file was already confirmed, treat as success)
+                if response.status_code == 400:
+                    try:
+                        error_data = response.json()
+                        error_detail = error_data.get('detail', '')
+                        if 'already exists' in str(error_detail).lower():
+                            self.logger.info(f"File already confirmed in AI Drive: {filename}")
+                            return True
+                    except:
+                        pass
+                
+                # Server Error 500 - retry
+                if response.status_code == 500:
+                    if attempt < retry_count - 1:
+                        wait_time = (attempt + 1) * 2  # Exponential backoff: 2s, 4s, 6s
+                        self.logger.warning(f"Server error 500, retrying in {wait_time}s... (attempt {attempt + 1}/{retry_count})")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        # Last attempt failed
+                        try:
+                            error_data = response.json()
+                            self.logger.error(f"confirm_upload failed after {retry_count} attempts: {error_data}")
+                        except:
+                            self.logger.error(f"confirm_upload failed after {retry_count} attempts: {response.text[:200]}")
+                        return False
+                
+                # Log response status for other errors
+                if response.status_code != 200:
+                    try:
+                        error_data = response.json()
+                        self.logger.error(f"confirm_upload failed [{response.status_code}]: {error_data}")
+                    except:
+                        self.logger.error(f"confirm_upload failed [{response.status_code}]: {response.text[:200]}")
+                
+                response.raise_for_status()
+                
+                self.logger.debug(f"Upload confirmed for: {filename}")
+                return True
+                    
+            except Exception as e:
+                # Retry on exception (timeout, connection error, etc.)
+                if attempt < retry_count - 1:
+                    wait_time = (attempt + 1) * 2
+                    self.logger.warning(f"Confirm failed ({e}), retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    # Last attempt failed
+                    self.logger.error(f"Failed to confirm upload for '{filename}' after {retry_count} attempts: {e}")
+                    try:
+                        if hasattr(e, 'response') and e.response is not None:
+                            self.logger.error(f"Response: {e.response.text[:500]}")
+                    except:
+                        pass
+                    return False
+        
+        return False
     
     def upload_file(self, local_path: Path, remote_filename: str) -> bool:
         """
