@@ -106,10 +106,17 @@ class SyncEngine:
                 if item['name'].startswith('thumb_') and item['name'].endswith('.jpg'):
                     continue
                 
-                # Use the path from API response directly
-                # Example: "/beschreibung.txt" or "/GitHub_Deployment/DEPLOYMENT_INSTRUCTIONS.md"
-                file_path = item['path']
-                relative_path = file_path.lstrip('/')  # Remove leading slash for local path
+                # Handle different API response formats
+                # /api/aidrive/recent/files returns items without 'path' property
+                # /api/aidrive/files returns items with full 'path' property
+                if 'path' in item and item['path']:
+                    # New API format with full path
+                    file_path = item['path']
+                    relative_path = file_path.lstrip('/')
+                else:
+                    # Old API format - use filename only (root files)
+                    file_path = '/' + item['name']
+                    relative_path = item['name']
                 
                 remote_files[relative_path] = {
                     'path': relative_path,
