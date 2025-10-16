@@ -20,9 +20,10 @@ from sync_engine import SyncEngine
 class GenSparkSyncApp:
     """Main sync application"""
     
-    def __init__(self, sync_folder: Path, poll_interval: int = 30):
+    def __init__(self, sync_folder: Path, poll_interval: int = 30, sync_strategy: str = 'ask'):
         self.sync_folder = Path(sync_folder)
         self.poll_interval = poll_interval
+        self.sync_strategy = sync_strategy  # 'local', 'remote', or 'ask'
         
         # Components
         self.api_client: Optional[GenSparkAPIClient] = None
@@ -87,7 +88,7 @@ class GenSparkSyncApp:
         self.logger.info("✅ API connection successful")
         
         # Initialize sync engine
-        self.sync_engine = SyncEngine(self.sync_folder, self.api_client)
+        self.sync_engine = SyncEngine(self.sync_folder, self.api_client, sync_strategy=self.sync_strategy)
         
         # Initialize file watcher
         self.file_watcher = LocalFileWatcher(
@@ -232,10 +233,27 @@ def main():
     else:
         poll_interval = 30
     
+    # Get initial sync strategy
+    print(f"\n⚠️  Initial Sync Strategy (for remote-only folders/files):")
+    print("  [L] Local priority - Delete remote files that don't exist locally")
+    print("  [R] Remote priority - Download remote files that don't exist locally")
+    print("  [A] Ask - Prompt for each conflict (default)")
+    response = input("Choose strategy [L/R/A]: ").strip().upper()
+    
+    if response == 'L':
+        sync_strategy = 'local'
+        print("✅ Using LOCAL priority - Remote-only items will be deleted")
+    elif response == 'R':
+        sync_strategy = 'remote'
+        print("✅ Using REMOTE priority - Remote-only items will be downloaded")
+    else:
+        sync_strategy = 'ask'
+        print("✅ Using ASK mode - Will prompt for conflicts")
+    
     print()
     
-    # Create app
-    app = GenSparkSyncApp(sync_folder, poll_interval)
+    # Create app with sync strategy
+    app = GenSparkSyncApp(sync_folder, poll_interval, sync_strategy)
     
     # Setup signal handlers
     def signal_handler(sig, frame):

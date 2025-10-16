@@ -34,8 +34,12 @@
 - **Local → Cloud:** Watchdog erkennt Änderungen sofort → Upload
 - **Cloud → Local:** Polling alle 30s → Download neuer Dateien
 
-### ⚠️ Conflict Detection
-- Erkennt wenn Datei auf beiden Seiten geändert wurde
+### ⚠️ Conflict Detection & Sync Strategy
+- **True Conflicts:** Erkennt wenn Datei auf beiden Seiten geändert wurde
+- **Remote-Only Files:** Flexibles Handling mit Initial Sync Strategy
+  - **Local Priority:** Remote-only Dateien werden aus AI Drive gelöscht
+  - **Remote Priority:** Remote-only Dateien werden lokal heruntergeladen
+  - **Ask Mode:** Für jede remote-only Datei wird gefragt (Download/Delete/Skip)
 - Fragt User welche Version behalten werden soll
 - Unterstützt: "Local behalten", "Remote behalten", "Skip"
 
@@ -140,6 +144,19 @@ Falls du den Fehler `403 Client Error: Forbidden` bekommst:
    Empfohlen: 30-60 Sekunden
    ```
 
+5. **Initial Sync Strategy wählen:**
+   ```
+   [L] Local priority - Remote-only Dateien werden gelöscht
+   [R] Remote priority - Remote-only Dateien werden heruntergeladen
+   [A] Ask - Für jede remote-only Datei wird gefragt (default)
+   ```
+   
+   **Beispiel:**
+   - Du hast einen Ordner "ParentFolder" nur in der WebGUI, aber nicht lokal
+   - **Local Priority (L)**: Ordner wird aus AI Drive gelöscht
+   - **Remote Priority (R)**: Ordner wird lokal heruntergeladen
+   - **Ask (A)**: Du wirst für jeden Ordner/Datei einzeln gefragt
+
 ### Während des Betriebs
 
 **Lokale Änderungen:**
@@ -241,6 +258,25 @@ Choose: [L]ocal, [R]emote, [S]kip?
 - `R` → Remote Version behalten (Download)
 - `S` → Überspringen (nichts tun)
 
+### Remote-Only Files (nur in AI Drive, nicht lokal)
+
+**Bei "Ask" Strategy zeigt die App:**
+```
+⚠️  Remote-only file: ParentFolder/test.txt
+    Size: 1234 bytes
+    Modified: 2025-10-16 15:30:00
+    [D] Download to local
+    [X] Delete from remote
+    [S] Skip (do nothing)
+    
+Choose action [D/X/S]:
+```
+
+**Auswahl:**
+- `D` → Datei herunterladen
+- `X` → Datei aus AI Drive löschen
+- `S` → Nichts tun (Datei bleibt nur remote)
+
 ---
 
 ## 🏗️ Architektur
@@ -293,16 +329,23 @@ Choose: [L]ocal, [R]emote, [S]kip?
 ### ✅ Completed Features
 - ✅ **Bidirectional sync** - Root level files (32 files synced successfully)
 - ✅ **Download from folders** - Recursive scanning, downloads all files from folders
+- ✅ **Upload to folders** - Complete 3-step upload with nested folder creation
+  - Fixed: URL encoding with `safe='/'` to preserve folder structure
+  - Fixed: Improved "folder already exists" handling
+  - Fixed: Graceful "already exists" handling without errors
+  - Fixed: Race condition prevention with thread-safe upload tracking
 - ✅ **Folder structure** - Creates local directories automatically
 - ✅ **3-step upload** - get_url → Azure upload → confirm
-- ✅ **Conflict detection** - Detects and logs conflicts with detailed info
+- ✅ **Conflict detection** - Detects true conflicts (both sides changed)
+- ✅ **Folder deletion** - Deletes all files in folder when folder is deleted locally
+- ✅ **Path-based deletion** - Uses correct DELETE endpoint with file paths
+- ✅ **Sync Strategy** - Flexible handling of remote-only files/folders
+  - **Local Priority**: Deletes remote-only items from AI Drive
+  - **Remote Priority**: Downloads remote-only items to local
+  - **Ask Mode**: Prompts user for each remote-only item
 
 ### 🔧 In Progress
-- 🔧 **Upload to folders** - Currently debugging upload failures to folders with spaces in names
-  - Fixed: Added `safe='/'` to URL encoding to preserve folder structure
-  - Fixed: Improved "folder already exists" handling (400 status)
-  - Fixed: Enhanced error logging for all 3 upload steps
-  - Testing: Need to verify fixes with real Chrome cookies
+- 🔧 **Testing** - Comprehensive testing of all features with real-world scenarios
 
 ### 🔮 Future Improvements
 

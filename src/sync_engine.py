@@ -18,9 +18,10 @@ from genspark_api import GenSparkAPIClient
 class SyncEngine:
     """Manages bi-directional synchronization between local and AI Drive"""
     
-    def __init__(self, local_root: Path, api_client: GenSparkAPIClient):
+    def __init__(self, local_root: Path, api_client: GenSparkAPIClient, sync_strategy: str = 'ask'):
         self.local_root = Path(local_root)
         self.api_client = api_client
+        self.sync_strategy = sync_strategy  # 'local', 'remote', or 'ask'
         self.logger = logging.getLogger('SyncEngine')
         
         # State file tracking
@@ -42,7 +43,8 @@ class SyncEngine:
             'uploads': 0,
             'downloads': 0,
             'conflicts': 0,
-            'errors': 0
+            'errors': 0,
+            'remote_only_deleted': 0,  # Count remote-only deletions
         }
     
     def load_state(self):
@@ -298,35 +300,112 @@ class SyncEngine:
             # Don't return early - continue with non-conflicting files
             # return self.stats
         
-        # Download new remote files
+        # Handle remote-only files (files that exist on remote but not locally)
         remote_only = set(remote_files.keys()) - set(local_files.keys())
         self.logger.info(f"Files to download: {len(remote_only)}")
-        for path in remote_only:
-            remote = remote_files[path]
-            local_path = self.local_root / path
+        
+        if remote_only and self.sync_strategy == 'local':
+            # Local priority: Delete remote-only files
+            self.logger.warning(f"⚠️  Sync strategy: LOCAL priority")
+            self.logger.warning(f"⚠️  {len(remote_only)} remote-only files will be DELETED from AI Drive")
             
-            self.logger.info(f"Downloading new file: {path}")
+            for path in remote_only:
+                remote = remote_files[path]
+                self.logger.info(f"Deleting remote-only file: {path}")
+                if self.api_client.delete_file('', remote['name'], remote['file_path']):
+                    self.stats['remote_only_deleted'] += 1
+                    # Remove from state if exists
+                    if path in self.state:
+                        del self.state[path]
+        
+        elif remote_only and self.sync_strategy == 'ask':
+            # Ask strategy: Prompt user for each remote-only file
+            self.logger.warning(f"⚠️  Sync strategy: ASK for each file")
+            self.logger.warning(f"⚠️  Found {len(remote_only)} remote-only files")
             
-            # Mark as downloading to avoid file watcher re-uploading
-            self.downloading_files.add(path)
-            
-            try:
-                # Pass file_path parameter for correct download URL construction
-                if self.api_client.download_file(
-                    remote['id'], 
-                    remote['name'], 
-                    remote['file_path'],  # Full path like "/folder/file.txt"
-                    local_path
-                ):
-                    self.state[path] = {
-                        'modified_time': remote['modified_time'],
-                        'size': remote['size']
-                    }
-                    self.stats['downloads'] += 1
-            finally:
-                # Remove from downloading set after a delay (file watcher needs time)
-                # We'll clean this up after sync completes
-                pass
+            for path in remote_only:
+                remote = remote_files[path]
+                local_path = self.local_root / path
+                
+                # Prompt user
+                print(f"\n⚠️  Remote-only file: {path}")
+                print(f"    Size: {remote['size']} bytes")
+                print(f"    Modified: {datetime.fromtimestamp(remote['modified_time']).strftime('%Y-%m-%d %H:%M:%S')}")
+                print(f"    [D] Download to local")
+                print(f"    [X] Delete from remote")
+                print(f"    [S] Skip (do nothing)")
+                
+                while True:
+                    choice = input("Choose action [D/X/S]: ").strip().upper()
+                    if choice in ['D', 'X', 'S']:
+                        break
+                    print("Invalid choice. Please enter D, X, or S.")
+                
+                if choice == 'D':
+                    # Download file
+                    self.logger.info(f"User chose: Download {path}")
+                    self.downloading_files.add(path)
+                    
+                    try:
+                        if self.api_client.download_file(
+                            remote['id'], 
+                            remote['name'], 
+                            remote['file_path'],
+                            local_path
+                        ):
+                            self.state[path] = {
+                                'modified_time': remote['modified_time'],
+                                'size': remote['size']
+                            }
+                            self.stats['downloads'] += 1
+                            print(f"✅ Downloaded: {path}")
+                    finally:
+                        pass
+                
+                elif choice == 'X':
+                    # Delete from remote
+                    self.logger.info(f"User chose: Delete {path}")
+                    if self.api_client.delete_file('', remote['name'], remote['file_path']):
+                        self.stats['remote_only_deleted'] += 1
+                        if path in self.state:
+                            del self.state[path]
+                        print(f"✅ Deleted from remote: {path}")
+                    else:
+                        print(f"❌ Failed to delete: {path}")
+                
+                else:  # choice == 'S'
+                    # Skip - do nothing
+                    self.logger.info(f"User chose: Skip {path}")
+                    print(f"⏭️  Skipped: {path}")
+        
+        else:
+            # Remote priority (or default): Download remote-only files
+            for path in remote_only:
+                remote = remote_files[path]
+                local_path = self.local_root / path
+                
+                self.logger.info(f"Downloading new file: {path}")
+                
+                # Mark as downloading to avoid file watcher re-uploading
+                self.downloading_files.add(path)
+                
+                try:
+                    # Pass file_path parameter for correct download URL construction
+                    if self.api_client.download_file(
+                        remote['id'], 
+                        remote['name'], 
+                        remote['file_path'],  # Full path like "/folder/file.txt"
+                        local_path
+                    ):
+                        self.state[path] = {
+                            'modified_time': remote['modified_time'],
+                            'size': remote['size']
+                        }
+                        self.stats['downloads'] += 1
+                finally:
+                    # Remove from downloading set after a delay (file watcher needs time)
+                    # We'll clean this up after sync completes
+                    pass
         
         # Upload new local files
         local_only = set(local_files.keys()) - set(remote_files.keys())
