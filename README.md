@@ -288,19 +288,35 @@ Choose: [L]ocal, [R]emote, [S]kip?
 
 ---
 
-## 🔮 Zukünftige Verbesserungen
+## 🔮 Status & Known Issues
 
-### Version 1.1
+### ✅ Completed Features
+- ✅ **Bidirectional sync** - Root level files (32 files synced successfully)
+- ✅ **Download from folders** - Recursive scanning, downloads all files from folders
+- ✅ **Folder structure** - Creates local directories automatically
+- ✅ **3-step upload** - get_url → Azure upload → confirm
+- ✅ **Conflict detection** - Detects and logs conflicts with detailed info
+
+### 🔧 In Progress
+- 🔧 **Upload to folders** - Currently debugging upload failures to folders with spaces in names
+  - Fixed: Added `safe='/'` to URL encoding to preserve folder structure
+  - Fixed: Improved "folder already exists" handling (400 status)
+  - Fixed: Enhanced error logging for all 3 upload steps
+  - Testing: Need to verify fixes with real Chrome cookies
+
+### 🔮 Future Improvements
+
+#### Version 1.1
 - [ ] macOS Notifications für Konflikte
 - [ ] GUI für Conflict Resolution
 - [ ] Bessere Progress Indicators
 
-### Version 1.2
+#### Version 1.2
 - [ ] Selective Sync (nur bestimmte Ordner)
 - [ ] Bandwidth Limiting
 - [ ] Retry Logic für fehlgeschlagene Uploads
 
-### Version 1.3
+#### Version 1.3
 - [ ] LaunchAgent für Auto-Start
 - [ ] System Tray Icon
 - [ ] Statistics Dashboard

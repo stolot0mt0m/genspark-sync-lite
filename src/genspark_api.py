@@ -173,11 +173,23 @@ class GenSparkAPIClient:
             # Discovered from Chrome DevTools:
             # GET /api/aidrive/get_upload_url/files/{filename}
             from urllib.parse import quote
-            encoded_filename = quote(filename)
+            # CRITICAL: safe='/' preserves folder structure (e.g., "Folder/file.txt")
+            # Without it, "/" becomes "%2F" which API rejects
+            encoded_filename = quote(filename, safe='/')
             url = f"{self.API_BASE}/get_upload_url/files/{encoded_filename}"
             
-            self.logger.debug(f"Requesting upload URL for: {filename}")
+            self.logger.info(f"Requesting upload URL for: {filename}")
+            self.logger.debug(f"URL: {url}")
             response = self.session.get(url, timeout=10)
+            
+            # Log response status
+            if response.status_code != 200:
+                try:
+                    error_data = response.json()
+                    self.logger.error(f"get_upload_url failed [{response.status_code}]: {error_data}")
+                except:
+                    self.logger.error(f"get_upload_url failed [{response.status_code}]: {response.text[:200]}")
+            
             response.raise_for_status()
             
             data = response.json()
@@ -189,14 +201,20 @@ class GenSparkAPIClient:
                 token = upload_data.get("token")
                 
                 if upload_url and token:
-                    self.logger.info(f"Got upload URL and token for: {filename}")
+                    self.logger.info(f"✅ Got upload URL and token for: {filename}")
                     return (upload_url, token)
             
             self.logger.error(f"No upload_url or token in response: {data}")
             return None
                 
         except Exception as e:
-            self.logger.error(f"Failed to request upload URL: {e}")
+            self.logger.error(f"Failed to request upload URL for '{filename}': {e}")
+            # Log response if available
+            try:
+                if hasattr(e, 'response') and e.response is not None:
+                    self.logger.error(f"Response: {e.response.text[:500]}")
+            except:
+                pass
             return None
     
     def create_folder(self, folder_path: str) -> bool:
@@ -213,19 +231,31 @@ class GenSparkAPIClient:
             # Discovered from Chrome DevTools:
             # POST /api/aidrive/mkdir/files/{folder_name}/
             from urllib.parse import quote
-            encoded_path = quote(folder_path)
+            # CRITICAL: safe='/' preserves nested folder structure (e.g., "Parent/Child")
+            # Without it, "/" becomes "%2F" which API rejects
+            encoded_path = quote(folder_path, safe='/')
             url = f"{self.API_BASE}/mkdir/files/{encoded_path}/"
             
             self.logger.info(f"Creating folder: {folder_path}")
             response = self.session.post(url, timeout=10)
             
-            # Log response details
-            self.logger.debug(f"mkdir response status: {response.status_code}")
+            # Check if folder already exists (status 400 with "already exists" message)
+            if response.status_code == 400:
+                try:
+                    error_data = response.json()
+                    error_detail = error_data.get('detail', '').lower()
+                    if 'already exists' in error_detail:
+                        self.logger.debug(f"Folder already exists: {folder_path}")
+                        return True
+                except:
+                    pass
+            
+            # Log other errors
             if response.status_code != 200:
                 try:
-                    self.logger.error(f"mkdir response: {response.json()}")
+                    self.logger.error(f"mkdir failed [{response.status_code}]: {response.json()}")
                 except:
-                    self.logger.error(f"mkdir response text: {response.text[:200]}")
+                    self.logger.error(f"mkdir failed [{response.status_code}]: {response.text[:200]}")
             
             response.raise_for_status()
             
@@ -233,10 +263,7 @@ class GenSparkAPIClient:
             return True
                 
         except Exception as e:
-            # Folder might already exist
-            if "409" in str(e) or "already exists" in str(e).lower():
-                self.logger.debug(f"Folder already exists: {folder_path}")
-                return True
+            # Catch any other exceptions
             self.logger.error(f"Failed to create folder: {e}")
             return False
     
@@ -256,23 +283,36 @@ class GenSparkAPIClient:
             # POST /api/aidrive/confirm_upload/files/{filename}
             # Body: {"token": "..."}
             from urllib.parse import quote
-            encoded_filename = quote(filename)
+            # CRITICAL: safe='/' preserves folder structure (e.g., "Folder/file.txt")
+            # Without it, "/" becomes "%2F" which API rejects
+            encoded_filename = quote(filename, safe='/')
             url = f"{self.API_BASE}/confirm_upload/files/{encoded_filename}"
             
             payload = {"token": token}
             
             self.logger.info(f"Confirming upload for: {filename}")
+            self.logger.debug(f"URL: {url}")
             response = self.session.post(url, json=payload, timeout=10)
+            
+            # Log response status
+            if response.status_code != 200:
+                try:
+                    error_data = response.json()
+                    self.logger.error(f"confirm_upload failed [{response.status_code}]: {error_data}")
+                except:
+                    self.logger.error(f"confirm_upload failed [{response.status_code}]: {response.text[:200]}")
+            
             response.raise_for_status()
             
-            self.logger.info(f"Upload confirmed for: {filename}")
+            self.logger.info(f"✅ Upload confirmed for: {filename}")
             return True
                 
         except Exception as e:
-            self.logger.error(f"Failed to confirm upload: {e}")
+            self.logger.error(f"Failed to confirm upload for '{filename}': {e}")
             # Log response for debugging
             try:
-                self.logger.error(f"Response: {e.response.json()}")
+                if hasattr(e, 'response') and e.response is not None:
+                    self.logger.error(f"Response: {e.response.text[:500]}")
             except:
                 pass
             return False
