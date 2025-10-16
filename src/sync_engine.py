@@ -30,6 +30,9 @@ class SyncEngine:
         # Track files currently being downloaded (to avoid re-uploading)
         self.downloading_files: Set[str] = set()
         
+        # Track files currently being uploaded (to avoid duplicate uploads)
+        self.uploading_files: Set[str] = set()
+        
         # Sync statistics
         self.stats = {
             'uploads': 0,
@@ -315,19 +318,31 @@ class SyncEngine:
         local_only = set(local_files.keys()) - set(remote_files.keys())
         self.logger.info(f"Files to upload: {len(local_only)}")
         for path in local_only:
+            # Skip if already uploading
+            if path in self.uploading_files:
+                self.logger.debug(f"Skipping {path} (upload already in progress)")
+                continue
+            
             local = local_files[path]
             local_path = self.local_root / path
             
-            self.logger.info(f"Uploading new file: {path}")
+            # Mark as uploading
+            self.uploading_files.add(path)
             
-            # Use full path for files in folders (e.g., "TestOrdner/file.txt")
-            # API expects: /api/aidrive/get_upload_url/files/TestOrdner/file.txt
-            if self.api_client.upload_file(local_path, path):
-                self.state[path] = {
-                    'modified_time': local['modified_time'],
-                    'size': local['size']
-                }
-                self.stats['uploads'] += 1
+            try:
+                self.logger.info(f"Uploading new file: {path}")
+                
+                # Use full path for files in folders (e.g., "TestOrdner/file.txt")
+                # API expects: /api/aidrive/get_upload_url/files/TestOrdner/file.txt
+                if self.api_client.upload_file(local_path, path):
+                    self.state[path] = {
+                        'modified_time': local['modified_time'],
+                        'size': local['size']
+                    }
+                    self.stats['uploads'] += 1
+            finally:
+                # Always remove from uploading set
+                self.uploading_files.discard(path)
         
         # Update state for unchanged files
         common_files = set(local_files.keys()) & set(remote_files.keys())
@@ -341,13 +356,14 @@ class SyncEngine:
         
         self.save_state()
         
-        # Clear downloading files after a short delay
+        # Clear downloading/uploading files after a short delay
         # (File watcher events are debounced by 2 seconds)
         import threading
-        def clear_downloading():
+        def clear_tracking_sets():
             time.sleep(3)
             self.downloading_files.clear()
-        threading.Thread(target=clear_downloading, daemon=True).start()
+            self.uploading_files.clear()
+        threading.Thread(target=clear_tracking_sets, daemon=True).start()
         
         self.logger.info(f"Sync complete: {self.stats['uploads']} uploads, {self.stats['downloads']} downloads")
         return self.stats
@@ -361,16 +377,28 @@ class SyncEngine:
             self.logger.debug(f"Skipping upload for {relative_path} (currently downloading)")
             return
         
+        # Skip if we're already uploading this file
+        if relative_path in self.uploading_files:
+            self.logger.debug(f"Skipping duplicate upload for {relative_path} (upload already in progress)")
+            return
+        
         if event_type in ['created', 'modified']:
-            # Upload file with full path for folders support
-            self.logger.info(f"Uploading: {relative_path}")
-            if self.api_client.upload_file(path, relative_path):
-                self.state[relative_path] = {
-                    'modified_time': int(path.stat().st_mtime),
-                    'size': path.stat().st_size
-                }
-                self.save_state()
-                self.stats['uploads'] += 1
+            # Mark file as being uploaded
+            self.uploading_files.add(relative_path)
+            
+            try:
+                # Upload file with full path for folders support
+                self.logger.info(f"Uploading: {relative_path}")
+                if self.api_client.upload_file(path, relative_path):
+                    self.state[relative_path] = {
+                        'modified_time': int(path.stat().st_mtime),
+                        'size': path.stat().st_size
+                    }
+                    self.save_state()
+                    self.stats['uploads'] += 1
+            finally:
+                # Always remove from uploading set
+                self.uploading_files.discard(relative_path)
         
         elif event_type == 'deleted':
             # Delete from remote (if exists)

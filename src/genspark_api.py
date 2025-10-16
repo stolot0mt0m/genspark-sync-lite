@@ -182,7 +182,20 @@ class GenSparkAPIClient:
             self.logger.debug(f"URL: {url}")
             response = self.session.get(url, timeout=10)
             
-            # Log response status
+            # Check for "EntryAlreadyExistsError" (file already exists, no need to re-upload)
+            if response.status_code == 400:
+                try:
+                    error_data = response.json()
+                    error_detail = error_data.get('detail', {})
+                    if isinstance(error_detail, dict):
+                        error_type = error_detail.get('error_type', '')
+                        if error_type == 'EntryAlreadyExistsError':
+                            self.logger.info(f"File already exists in AI Drive: {filename} (skipping)")
+                            return None  # Signal to skip upload
+                except:
+                    pass
+            
+            # Log response status for other errors
             if response.status_code != 200:
                 try:
                     error_data = response.json()
