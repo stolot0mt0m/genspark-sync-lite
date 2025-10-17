@@ -331,9 +331,38 @@ class SyncEngine:
         """Perform one sync cycle"""
         self.logger.info("Starting sync cycle...")
         
+        # CRITICAL SAFETY CHECK: Verify local folder exists and is accessible
+        if not self.local_root.exists():
+            self.logger.error(f"❌ CRITICAL: Local folder does not exist: {self.local_root}")
+            self.logger.error(f"❌ ABORTING sync to prevent data loss!")
+            return self.stats
+        
+        if not self.local_root.is_dir():
+            self.logger.error(f"❌ CRITICAL: Local path is not a directory: {self.local_root}")
+            self.logger.error(f"❌ ABORTING sync to prevent data loss!")
+            return self.stats
+        
         # Scan both sides
         local_files = self.scan_local_files()
         remote_files = self.scan_remote_files()
+        
+        self.logger.debug(f"Scanned: {len(local_files)} local, {len(remote_files)} remote files")
+        
+        # SAFETY CHECK: If local folder is empty but remote has files, warn user
+        if len(local_files) == 0 and len(remote_files) > 0:
+            self.logger.warning(f"⚠️  WARNING: Local folder is empty but remote has {len(remote_files)} files!")
+            self.logger.warning(f"⚠️  This could indicate a problem. Skipping deletion propagation.")
+            # We'll still download remote files, but won't delete them
+        
+        # SAFETY CHECK: If we would delete more than 50% of remote files, abort
+        remote_only = set(remote_files.keys()) - set(local_files.keys())
+        if len(remote_files) > 0:
+            deletion_percentage = (len(remote_only) / len(remote_files)) * 100
+            if deletion_percentage > 50:
+                self.logger.error(f"❌ CRITICAL SAFETY: Would delete {len(remote_only)} files ({deletion_percentage:.1f}% of remote)")
+                self.logger.error(f"❌ This seems wrong. ABORTING sync to prevent data loss!")
+                self.logger.error(f"❌ Please check your local folder: {self.local_root}")
+                return self.stats
         
         self.logger.debug(f"Scanned: {len(local_files)} local, {len(remote_files)} remote files")
         
@@ -392,6 +421,20 @@ class SyncEngine:
         if deleted_local_files:
             self.logger.info(f"🗑️  Propagating {len(deleted_local_files)} local deletions to AI Drive")
             for path in deleted_local_files:
+                # SAFETY CHECK: Verify file really doesn't exist locally
+                local_file_path = self.local_root / path
+                if local_file_path.exists():
+                    # File EXISTS locally but wasn't scanned → Don't delete!
+                    self.logger.warning(f"⚠️  SAFETY: File exists locally but not in scan - skipping delete: {path}")
+                    # Re-upload to be safe
+                    self.logger.info(f"📤 Re-uploading to ensure sync: {path}")
+                    if self.api_client.upload_file(local_file_path, path):
+                        stat = local_file_path.stat()
+                        quick_hash = self.get_file_hash(local_file_path)
+                        self.update_file_state(path, stat.st_size, int(stat.st_mtime), quick_hash)
+                    continue
+                
+                # File REALLY deleted locally → Safe to delete remote
                 remote = remote_files[path]
                 self.logger.debug(f"Deleting from remote: {path}")
                 if self.api_client.delete_file('', remote['name'], remote['file_path']):
