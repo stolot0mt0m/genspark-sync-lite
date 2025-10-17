@@ -32,6 +32,13 @@ Minimaler Ressourcen-Verbrauch: ~30MB RAM, <1% CPU
 - **Auto-Retry** - 3 Versuche bei Server-Fehlern mit exponential backoff
 - **Production-ready** - Umfangreiche Error-Handling und Logging
 
+### 🛡️ Sicherheits-Features (Data Loss Prevention)
+- **🚫 Mass Deletion Protection** - Abort wenn >50% der Remote-Dateien gelöscht würden
+- **✅ Folder Existence Check** - Abort wenn lokaler Ordner nicht existiert/unmounted
+- **⚠️ Empty Folder Warning** - Warnung wenn lokal leer aber remote voll
+- **🔍 Per-File Verification** - Verifiziert dass Datei wirklich lokal gelöscht wurde vor Remote-Deletion
+- **📤 Auto Re-Upload** - Wenn Datei existiert aber nicht gescannt wurde, wird sie re-uploaded statt gelöscht
+
 ---
 
 ## 📦 Installation
